@@ -1,0 +1,197 @@
+---
+title: "Install Ebitengine and configure your Go project"
+description: "Install Go and Ebitengine, set up platform-specific system libraries on Linux, and verify your setup by compiling and running a minimal game window."
+---
+
+Ebitengine is distributed as a standard Go module. Once Go is installed and any platform prerequisites are in place, adding Ebitengine to a project is a single `go get` command.
+
+## Prerequisites
+
+You need **Go 1.21 or later**. Check your version with:
+
+```bash
+go version
+```
+
+Download the latest Go release from [go.dev/dl](https://go.dev/dl) if your version is older.
+
+<Tabs>
+  <Tab title="Windows">
+    No additional system libraries are required on Windows. Ebitengine uses DirectX 11, which is present on all supported Windows versions (Windows 10 and later).
+
+    Make sure the Go toolchain is on your `PATH`:
+
+    ```powershell
+    go version
+    # go version go1.22.x windows/amd64
+    ```
+
+    <Note>
+      If you plan to build for WebAssembly or Android, you will also need Node.js and the Android NDK respectively — but those are not needed for a desktop build.
+    </Note>
+  </Tab>
+  <Tab title="macOS">
+    Ebitengine uses Metal on macOS and requires the Xcode command line tools. Install them with:
+
+    ```bash
+    xcode-select --install
+    ```
+
+    If Xcode is already installed, this command exits immediately. You can confirm the tools are present with:
+
+    ```bash
+    xcode-select -p
+    # /Library/Developer/CommandLineTools
+    ```
+
+    Both Intel (`amd64`) and Apple Silicon (`arm64`) Macs are supported. Universal binary builds are possible with `GOARCH=amd64` / `GOARCH=arm64` and `lipo`.
+  </Tab>
+  <Tab title="Linux">
+    Linux builds require several system libraries for graphics, window management, and audio. Install them with your distribution's package manager.
+
+    **Debian / Ubuntu:**
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y \
+      libgl1-mesa-dev \
+      libxcursor-dev \
+      libxi-dev \
+      libxinerama-dev \
+      libxrandr-dev \
+      libxxf86vm-dev \
+      libasound2-dev
+    ```
+
+    **Fedora / RHEL:**
+
+    ```bash
+    sudo dnf install \
+      mesa-libGL-devel \
+      libXcursor-devel \
+      libXi-devel \
+      libXinerama-devel \
+      libXrandr-devel \
+      libXxf86vm-devel \
+      alsa-lib-devel
+    ```
+
+    **Arch Linux:**
+
+    ```bash
+    sudo pacman -S \
+      mesa \
+      libxcursor \
+      libxi \
+      libxinerama \
+      libxrandr \
+      libxxf86vm \
+      alsa-lib
+    ```
+
+    <Note>
+      These libraries are only needed at compile and link time on the machine that builds the binary. End users do not need to install them separately — the libraries are typically present on any desktop Linux installation with a display server.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Create a Go module
+
+If you don't have an existing Go module, create one:
+
+```bash
+mkdir mygame
+cd mygame
+go mod init example.com/mygame
+```
+
+Replace `example.com/mygame` with your own module path — for personal projects, `github.com/yourname/mygame` works well.
+
+## Add Ebitengine
+
+```bash
+go get github.com/hajimehoshi/ebiten/v2
+```
+
+This downloads the module and adds it to your `go.mod` and `go.sum` files. Your `go.mod` will include a line like:
+
+```text
+require github.com/hajimehoshi/ebiten/v2 v2.x.y
+```
+
+<Tip>
+  To pin a specific version, use `go get github.com/hajimehoshi/ebiten/v2@v2.7.0`. Run `go get github.com/hajimehoshi/ebiten/v2@latest` to upgrade at any time.
+</Tip>
+
+## Verify the installation
+
+Create a minimal `main.go` to confirm everything compiles:
+
+```go main.go
+package main
+
+import (
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+)
+
+type Game struct{}
+
+func (g *Game) Update() error               { return nil }
+func (g *Game) Draw(screen *ebiten.Image)   {}
+func (g *Game) Layout(ow, oh int) (int, int) { return 640, 480 }
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Ebitengine works!")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Run it:
+
+```bash
+go run .
+```
+
+A blank 640×480 window should appear. Close it with the window's close button or press `Ctrl+C` in the terminal.
+
+<Warning>
+  On Linux, if you see an error like `cannot find -lGL` or `X11/Xlib.h: No such file or directory`, the system libraries listed above are not installed. Install them and try again.
+</Warning>
+
+## Project structure
+
+For anything beyond a single file, a typical layout is:
+
+<Tree>
+  <Tree.Folder name="mygame" defaultOpen>
+    <Tree.File name="go.mod" />
+    <Tree.File name="go.sum" />
+    <Tree.File name="main.go" />
+    <Tree.Folder name="assets">
+      <Tree.File name="player.png" />
+      <Tree.File name="tilemap.png" />
+    </Tree.Folder>
+    <Tree.Folder name="game">
+      <Tree.File name="game.go" />
+      <Tree.File name="player.go" />
+    </Tree.Folder>
+  </Tree.Folder>
+</Tree>
+
+Ebitengine has no required directory structure. The layout above is a common convention, not a requirement.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Hello, World!" icon="rocket" href="/hello-world">
+    Write a program that fills the window with a solid color.
+  </Card>
+  <Card title="Your first game" icon="gamepad" href="/your-first-game">
+    Build a moving square with keyboard input and boundary collision.
+  </Card>
+</CardGroup>

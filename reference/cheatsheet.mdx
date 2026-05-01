@@ -1,0 +1,399 @@
+---
+title: "Ebitengine API cheat sheet and quick reference"
+description: "Quick-reference snippets for Ebitengine v2: game lifecycle, window setup, images, transforms, keyboard, mouse, touch, gamepad, audio, and shaders."
+---
+
+This cheat sheet collects the Ebitengine v2 APIs you reach for most often, organised by topic. Each section shows the function signatures and a minimal working snippet. For full documentation and less common members, consult the [packages reference](/reference/packages) or the official Go module documentation at `pkg.go.dev/github.com/hajimehoshi/ebiten/v2`.
+
+<AccordionGroup>
+
+<Accordion title="Game lifecycle">
+
+Every Ebitengine program implements the `Game` interface and calls `RunGame`.
+
+```go
+type Game interface {
+    // Update advances game state. Called TPS times per second (default 60).
+    Update() error
+    // Draw renders the current frame onto the screen image.
+    Draw(screen *ebiten.Image)
+    // Layout returns the logical (internal) screen size in pixels.
+    Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int)
+}
+
+func RunGame(game Game) error
+```
+
+Minimal complete example:
+
+```go
+package main
+
+import (
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    "log"
+)
+
+type Game struct{}
+
+func (g *Game) Update() error        { return nil }
+func (g *Game) Draw(screen *ebiten.Image) {
+    ebitenutil.DebugPrint(screen, "Hello, Ebitengine!")
+}
+func (g *Game) Layout(ow, oh int) (int, int) { return 320, 240 }
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Hello")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Return `ebiten.Termination` (or any non-nil error) from `Update` to exit cleanly.
+
+</Accordion>
+
+<Accordion title="Window settings">
+
+Call these before or after `RunGame`; most take effect immediately.
+
+```go
+// Size & title
+ebiten.SetWindowSize(width, height int)
+ebiten.SetWindowTitle(title string)
+ebiten.SetWindowIcon(imgs []image.Image)
+
+// Fullscreen & resizable
+ebiten.SetFullscreen(fullscreen bool)
+ebiten.IsFullscreen() bool
+ebiten.SetWindowResizingMode(mode ebiten.WindowResizingModeType)
+// modes: WindowResizingModeDisabled | WindowResizingModeOnlyFullscreenEnabled | WindowResizingModeEnabled
+
+// Position
+ebiten.SetWindowPosition(x, y int)
+ebiten.WindowPosition() (x, y int)
+
+// Decorations & focus
+ebiten.SetWindowDecorated(decorated bool)
+ebiten.SetWindowFloating(floating bool)
+ebiten.SetWindowClosingHandled(handled bool) // intercept close button
+
+// Cursor
+ebiten.SetCursorMode(mode ebiten.CursorModeType)
+// modes: CursorModeVisible | CursorModeHidden | CursorModeCaptured
+ebiten.SetCursorShape(shape ebiten.CursorShapeType)
+
+// TPS / FPS
+ebiten.SetTPS(tps int)       // default 60; use ebiten.SyncWithFPS for VSync
+ebiten.TPS() int
+ebiten.ActualTPS() float64
+ebiten.ActualFPS() float64
+```
+
+</Accordion>
+
+<Accordion title="Image operations">
+
+```go
+// Creation
+img := ebiten.NewImage(width, height int) *ebiten.Image
+img := ebiten.NewImageFromImage(src image.Image) *ebiten.Image
+
+// Drawing
+img.DrawImage(src *ebiten.Image, opts *ebiten.DrawImageOptions)
+img.DrawRectShader(width, height int, shader *ebiten.Shader, opts *ebiten.DrawRectShaderOptions)
+
+// Filling & clearing
+img.Fill(c color.Color)
+img.Clear()   // equivalent to Fill(color.Transparent)
+
+// Sub-images (sprite sheets, atlases)
+sub := img.SubImage(r image.Rectangle).(* ebiten.Image)
+
+// Dimensions
+w, h := img.Size()       // integer pixel size
+bounds := img.Bounds()   // image.Rectangle
+
+// Per-pixel access (slow — avoid in Draw/Update hot paths)
+img.Set(x, y int, c color.Color)
+c := img.At(x, y int) color.Color
+```
+
+<Warning>
+`Set` and `At` are GPU–CPU round-trips and will stall rendering. Use them only during initialisation or for debugging.
+</Warning>
+
+</Accordion>
+
+<Accordion title="DrawImageOptions fields">
+
+`DrawImageOptions` controls how `DrawImage` composites the source image.
+
+```go
+opts := &ebiten.DrawImageOptions{}
+
+// Geometry (affine transform) — applied in order of method calls
+opts.GeoM.Translate(tx, ty float64)
+opts.GeoM.Scale(sx, sy float64)
+opts.GeoM.Rotate(angle float64)   // radians, counter-clockwise
+
+// Color scale — multiplies RGBA channels
+opts.ColorScale.Scale(r, g, b, a float32)
+opts.ColorScale.ScaleAlpha(a float32)
+
+// Blend mode
+opts.Blend = ebiten.BlendSourceOver   // default (normal alpha compositing)
+opts.Blend = ebiten.BlendLighter      // additive
+opts.Blend = ebiten.BlendCopy         // replace destination
+
+// Filtering
+opts.Filter = ebiten.FilterNearest    // default (pixel-perfect)
+opts.Filter = ebiten.FilterLinear     // smooth scaling
+```
+
+</Accordion>
+
+<Accordion title="GeoM — geometry matrix">
+
+`GeoM` is a 2-D affine transformation matrix. Operations are applied left-to-right (each call post-multiplies).
+
+```go
+var g ebiten.GeoM
+
+// Basic transforms
+g.Translate(tx, ty float64)
+g.Scale(sx, sy float64)
+g.Rotate(theta float64)   // radians
+
+// Skew
+g.Skew(skewX, skewY float64)
+
+// Reset to identity
+g.Reset()
+
+// Combine two matrices (g = g * other)
+g.Concat(other ebiten.GeoM)
+
+// Apply to a point
+x2, y2 := g.Apply(x, y float64)
+
+// Invert
+g.Invert()
+```
+
+Rotate around the centre of a 64×64 sprite:
+
+```go
+op := &ebiten.DrawImageOptions{}
+// Move origin to centre, rotate, move back
+op.GeoM.Translate(-32, -32)
+op.GeoM.Rotate(math.Pi / 4)
+op.GeoM.Translate(screenX, screenY)
+screen.DrawImage(sprite, op)
+```
+
+</Accordion>
+
+<Accordion title="Keyboard input">
+
+```go
+// Polling (true while held)
+ebiten.IsKeyPressed(key ebiten.Key) bool
+
+// Common key constants
+ebiten.KeyA … ebiten.KeyZ
+ebiten.Key0 … ebiten.Key9
+ebiten.KeyArrowUp, KeyArrowDown, KeyArrowLeft, KeyArrowRight
+ebiten.KeySpace, KeyEnter, KeyEscape, KeyShift, KeyControl, KeyAlt
+ebiten.KeyF1 … ebiten.KeyF12
+
+// Edge detection (requires inpututil)
+inpututil.IsKeyJustPressed(key ebiten.Key) bool
+inpututil.IsKeyJustReleased(key ebiten.Key) bool
+inpututil.KeyPressDuration(key ebiten.Key) int  // ticks held
+
+// All currently pressed keys
+ebiten.AppendPressedKeys(keys []ebiten.Key) []ebiten.Key
+
+// Keys pressed/released this tick
+inpututil.AppendJustPressedKeys(keys []ebiten.Key) []ebiten.Key
+inpututil.AppendJustReleasedKeys(keys []ebiten.Key) []ebiten.Key
+```
+
+</Accordion>
+
+<Accordion title="Mouse input">
+
+```go
+// Button polling
+ebiten.IsMouseButtonPressed(b ebiten.MouseButton) bool
+// Buttons: MouseButtonLeft, MouseButtonRight, MouseButtonMiddle
+
+// Edge detection
+inpututil.IsMouseButtonJustPressed(b ebiten.MouseButton) bool
+inpututil.IsMouseButtonJustReleased(b ebiten.MouseButton) bool
+inpututil.MouseButtonPressDuration(b ebiten.MouseButton) int
+
+// Position (logical pixels)
+x, y := ebiten.CursorPosition()
+
+// Scroll wheel (delta per tick)
+xDelta, yDelta := ebiten.Wheel()
+```
+
+</Accordion>
+
+<Accordion title="Touch input">
+
+```go
+// Retrieve active touch IDs
+ids := ebiten.AppendTouchIDs(nil)
+
+for _, id := range ids {
+    x, y := ebiten.TouchPosition(id)
+    // handle touch at (x, y)
+}
+
+// Edge detection
+inpututil.IsTouchJustReleased(id ebiten.TouchID) bool
+inpututil.TouchPressDuration(id ebiten.TouchID) int
+
+// Touches that just started this tick
+justPressed := inpututil.AppendJustPressedTouchIDs(nil)
+```
+
+<Note>
+On desktop builds, mouse button presses are also exposed as touch ID 0 when no hardware touch is present, depending on OS and driver.
+</Note>
+
+</Accordion>
+
+<Accordion title="Gamepad input">
+
+```go
+// Enumerate connected gamepads
+ids := ebiten.AppendGamepadIDs(nil)
+
+for _, id := range ids {
+    // Standard layout buttons (Xbox / PS mapping)
+    pressed := ebiten.IsStandardGamepadButtonPressed(id, ebiten.StandardGamepadButtonRightBottom)
+
+    // Raw button access
+    pressed := ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton0)
+
+    // Axes (-1.0 to +1.0)
+    val := ebiten.GamepadAxisValue(id, 0)
+
+    // Standard axes
+    val := ebiten.StandardGamepadAxisValue(id, ebiten.StandardGamepadAxisLeftStickHorizontal)
+}
+
+// Edge detection
+inpututil.IsGamepadButtonJustPressed(id ebiten.GamepadID, b ebiten.GamepadButton) bool
+inpututil.IsStandardGamepadButtonJustPressed(id ebiten.GamepadID, b ebiten.StandardGamepadButton) bool
+```
+
+</Accordion>
+
+<Accordion title="Audio">
+
+```go
+import (
+    "github.com/hajimehoshi/ebiten/v2/audio"
+    "github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+)
+
+// 1. Create a context once (e.g., in init or game constructor)
+audioCtx := audio.NewContext(44100)
+
+// 2. Decode an asset
+f, _ := os.Open("music.ogg")
+stream, _ := vorbis.DecodeWithSampleRate(44100, f)
+
+// 3. Create an infinite loop
+loop := audio.NewInfiniteLoop(stream, stream.Length())
+
+// 4. Create a player and start
+player, _ := audioCtx.NewPlayer(loop)
+player.Play()
+
+// Player controls
+player.Pause()
+player.Play()
+player.Rewind()
+player.SetVolume(0.5)    // 0.0 – 1.0
+player.IsPlaying() bool
+player.Close()
+```
+
+</Accordion>
+
+<Accordion title="Shaders (Kage)">
+
+Kage is Ebitengine's built-in shading language (Go-like syntax, compiled to GLSL/MSL/HLSL at runtime).
+
+```go
+// Compile a shader from source bytes
+shader, err := ebiten.NewShader(src []byte) (*ebiten.Shader, error)
+
+// Draw a rectangle using the shader
+opts := &ebiten.DrawRectShaderOptions{}
+opts.Images[0] = myTexture     // up to 4 sampler inputs
+opts.Uniforms = map[string]any{
+    "Time": float32(time),
+}
+screen.DrawRectShader(width, height int, shader, opts)
+```
+
+Minimal Kage shader:
+
+```go
+//go:build ignore
+
+package main
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+    return imageSrc0At(srcPos)
+}
+```
+
+</Accordion>
+
+<Accordion title="Utility helpers">
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+
+// Overlay debug text (built-in monospace font)
+ebitenutil.DebugPrint(screen *ebiten.Image, str string)
+ebitenutil.DebugPrintAt(screen *ebiten.Image, str string, x, y int)
+
+// Load images from disk
+img, _, err := ebitenutil.NewImageFromFile(path string)
+
+// Load images from embed.FS or any fs.FS
+img, _, err := ebitenutil.NewImageFromFileSystem(fsys fs.FS, path string)
+
+// Draw a 1-pixel line
+ebitenutil.DrawLine(dst *ebiten.Image, x1, y1, x2, y2 float64, c color.Color)
+```
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/vector"
+
+// Filled shapes
+vector.DrawFilledRect(dst, x, y, w, h float32, c color.Color, antialias bool)
+vector.DrawFilledCircle(dst, cx, cy, r float32, c color.Color, antialias bool)
+
+// Stroked shapes
+vector.StrokeRect(dst, x, y, w, h, strokeWidth float32, c color.Color, antialias bool)
+vector.StrokeCircle(dst, cx, cy, r, strokeWidth float32, c color.Color, antialias bool)
+vector.StrokeLine(dst, x0, y0, x1, y1, strokeWidth float32, c color.Color, antialias bool)
+```
+
+</Accordion>
+
+</AccordionGroup>

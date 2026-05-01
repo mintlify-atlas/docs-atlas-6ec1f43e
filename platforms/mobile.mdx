@@ -1,0 +1,186 @@
+---
+title: "Build and deploy Ebitengine games for iOS and Android"
+description: "Package and deploy Ebitengine games to Android and iOS using the ebitenmobile bind tool. Covers prerequisites, build steps, and touch input on mobile."
+---
+
+Ebitengine supports iOS and Android through the `ebitenmobile` command-line tool, which wraps `gomobile bind` to produce a native library that embeds your game. The library is then integrated into a thin native host project (an Android Studio project or an Xcode project) that handles app lifecycle, permissions, and store submission.
+
+## Prerequisites
+
+Install the `ebitenmobile` tool:
+
+```bash
+go install github.com/hajimehoshi/ebiten/v2/cmd/ebitenmobile@latest
+```
+
+<Tabs>
+  <Tab title="Android">
+    - **Android Studio** with the Android SDK installed
+    - **Android NDK** (install via Android Studio → SDK Manager → SDK Tools → NDK)
+    - Set `ANDROID_HOME` to your SDK path (e.g., `~/Library/Android/sdk`)
+    - Set `ANDROID_NDK_HOME` to the NDK directory inside the SDK
+  </Tab>
+  <Tab title="iOS">
+    - **Xcode** (macOS only; iOS builds require a Mac)
+    - An Apple Developer account for running on a physical device or submitting to the App Store
+  </Tab>
+</Tabs>
+
+## Android build workflow
+
+<Steps>
+  <Step title="Implement the mobile interface">
+    Your game struct must implement `ebiten.Game`. No mobile-specific changes to your game logic are required. Make sure your package is importable (not `package main`):
+
+    ```go
+    // package game
+    package game
+
+    import "github.com/hajimehoshi/ebiten/v2"
+
+    type Game struct{}
+
+    func (g *Game) Update() error { return nil }
+    func (g *Game) Draw(screen *ebiten.Image) {}
+    func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+        return outsideWidth, outsideHeight
+    }
+    ```
+  </Step>
+  <Step title="Bind the Go package for Android">
+    Run `ebitenmobile bind` targeting Android. Replace `./game` with the import path of your game package:
+
+    ```bash
+    ebitenmobile bind \
+      -target android \
+      -javapkg com.example.game \
+      -o android/app/libs/game.aar \
+      ./game
+    ```
+
+    This produces a `.aar` archive containing native libraries for all supported Android ABIs (arm, arm64, x86, x86_64).
+  </Step>
+  <Step title="Create the Android host project">
+    Generate a starter Android project using the `ebitenmobile` template, or create one manually in Android Studio. Add the generated `.aar` as a dependency in `build.gradle`:
+
+    ```groovy
+    dependencies {
+        implementation fileTree(dir: 'libs', include: ['*.aar'])
+    }
+    ```
+  </Step>
+  <Step title="Build and install the APK">
+    Build a debug APK and install it on a connected device:
+
+    ```bash
+    ./gradlew installDebug
+    ```
+
+    For a release build, configure your signing keystore in `build.gradle` and run:
+
+    ```bash
+    ./gradlew bundleRelease
+    ```
+  </Step>
+</Steps>
+
+## iOS build workflow
+
+<Steps>
+  <Step title="Implement the mobile interface">
+    Use the same non-`main` package structure as for Android. The same game package can target both platforms.
+  </Step>
+  <Step title="Bind the Go package for iOS">
+    ```bash
+    ebitenmobile bind \
+      -target ios \
+      -o ios/Game.xcframework \
+      ./game
+    ```
+
+    For the iOS Simulator, target `iossimulator` instead:
+
+    ```bash
+    ebitenmobile bind \
+      -target iossimulator \
+      -o ios/GameSim.xcframework \
+      ./game
+    ```
+  </Step>
+  <Step title="Create the Xcode host project">
+    Create a new Xcode project (App template, Swift or Objective-C). Add the generated `.xcframework` under the project's **Frameworks, Libraries, and Embedded Content** section and set it to **Embed & Sign**.
+  </Step>
+  <Step title="Call the game from Swift">
+    In your `GameViewController`, call into the bound Go library to start the game:
+
+    ```swift
+    import UIKit
+    import Game // the bound xcframework
+
+    class GameViewController: UIViewController {
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            GameStart(self.view)
+        }
+    }
+    ```
+
+    The exact binding name (`GameStart`) matches the exported Go function you expose in your package.
+  </Step>
+  <Step title="Run on device or simulator">
+    Select your target device in Xcode and press **Run** (⌘R). For a physical device, ensure code signing is configured with your Apple Developer team.
+  </Step>
+</Steps>
+
+## Mobile input
+
+Mobile devices have no physical keyboard or mouse. Use the touch input APIs instead of keyboard/mouse APIs.
+
+```go
+import (
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/inpututil"
+)
+
+func (g *Game) Update() error {
+    // Get all active touch IDs
+    touchIDs := ebiten.AppendTouchIDs(nil)
+
+    for _, id := range touchIDs {
+        x, y := ebiten.TouchPosition(id)
+        _ = x
+        _ = y
+    }
+
+    // Detect the start of a new touch
+    justPressedIDs := inpututil.AppendJustPressedTouchIDs(nil)
+    for _, id := range justPressedIDs {
+        x, y := ebiten.TouchPosition(id)
+        _ = x
+        _ = y
+    }
+
+    return nil
+}
+```
+
+| Function | Description |
+|---|---|
+| `ebiten.AppendTouchIDs(ids []ebiten.TouchID)` | Returns all currently active touch point IDs. |
+| `ebiten.TouchPosition(id TouchID)` | Returns the x, y position of a touch point in logical pixels. |
+| `inpututil.AppendJustPressedTouchIDs(ids)` | Returns IDs of touches that began this frame. |
+| `inpututil.AppendJustReleasedTouchIDs(ids)` | Returns IDs of touches that ended this frame. |
+
+## Mobile considerations
+
+<Note>
+  Screen orientation is controlled by the host Android or iOS project, not by Ebitengine. Set your supported orientations in `AndroidManifest.xml` or the Xcode target's **Info** tab.
+</Note>
+
+<Warning>
+  Do not use `os.Exit` in mobile games. On mobile, the OS controls the app lifecycle. Return a non-nil error from `Update` only for unrecoverable errors, and handle suspension/resume via the platform callbacks.
+</Warning>
+
+<Tip>
+  Design your `Layout` function to return the full screen dimensions passed to it (`outsideWidth`, `outsideHeight`) to support all screen sizes and densities automatically without hardcoding a resolution.
+</Tip>

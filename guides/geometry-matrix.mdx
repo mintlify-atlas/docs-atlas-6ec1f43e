@@ -1,0 +1,176 @@
+---
+title: "Transforming images with the geometry matrix"
+description: "Learn how to use GeoM — Ebitengine's 3×2 affine transform — to translate, scale, rotate, and combine transformations when drawing images."
+---
+
+Every `DrawImageOptions` struct in Ebitengine includes a `GeoM` field, which is a 3×2 affine transformation matrix. Before Ebitengine draws an image, it multiplies every pixel position by `GeoM` to produce the final screen position. You can compose translation, scaling, and rotation — in any combination — by calling methods on `GeoM` before passing the options to `DrawImage`.
+
+## What is an affine transformation matrix?
+
+An affine transformation matrix encodes linear transformations (scale, rotation, shear) combined with a translation. Ebitengine represents this as a 3×2 matrix (two rows for X and Y, three columns for the two linear coefficients and the translation offset):
+
+```text
+| a  b  tx |
+| c  d  ty |
+```
+
+When GeoM is applied to a point `(x, y)`, the result is:
+
+```text
+x' = a*x + b*y + tx
+y' = c*x + d*y + ty
+```
+
+The default (identity) matrix leaves coordinates unchanged. You never need to set these values directly — the `GeoM` methods handle the math.
+
+## Translating an image
+
+`GeoM.Translate(tx, ty float64)` shifts the image by `tx` pixels on the X axis and `ty` pixels on the Y axis.
+
+```go
+opts := &ebiten.DrawImageOptions{}
+opts.GeoM.Translate(100, 50) // move 100px right, 50px down
+screen.DrawImage(sprite, opts)
+```
+
+<Tip>
+  Translation is the most common transform. Use it to position any image at an arbitrary screen coordinate rather than drawing at the origin.
+</Tip>
+
+## Scaling an image
+
+`GeoM.Scale(sx, sy float64)` multiplies the image dimensions by `sx` and `sy`. Values greater than 1 enlarge; values between 0 and 1 shrink; negative values also flip the image.
+
+```go
+opts := &ebiten.DrawImageOptions{}
+opts.GeoM.Scale(2, 2)           // double size
+opts.GeoM.Translate(x, y)       // then position it
+screen.DrawImage(sprite, opts)
+```
+
+To flip a sprite horizontally (mirror effect):
+
+```go
+w, _ := sprite.Bounds().Dx(), 0
+
+opts := &ebiten.DrawImageOptions{}
+opts.GeoM.Scale(-1, 1)          // flip on X axis
+opts.GeoM.Translate(float64(w), 0) // shift back into view
+opts.GeoM.Translate(x, y)
+screen.DrawImage(sprite, opts)
+```
+
+<Note>
+  Scaling happens around the origin (0, 0). A negative scale flips the image, but moves it off-screen — always follow a negative scale with a compensating translation.
+</Note>
+
+## Rotating an image
+
+`GeoM.Rotate(theta float64)` rotates the image by `theta` radians counter-clockwise. Use `math.Pi / 2` for 90°, `math.Pi` for 180°, and so on.
+
+```go
+import "math"
+
+opts := &ebiten.DrawImageOptions{}
+opts.GeoM.Rotate(math.Pi / 4) // rotate 45 degrees
+screen.DrawImage(sprite, opts)
+```
+
+<Warning>
+  Like scaling, rotation is applied around the origin. If you rotate a sprite that is positioned away from (0, 0) it will orbit the origin, not spin in place. See the section below on rotating around a center point.
+</Warning>
+
+## Order of operations
+
+GeoM operations are applied left-to-right in the order you call them. The order matters because matrix multiplication is not commutative.
+
+```go
+// Scale then translate: sprite is enlarged, then moved to (200, 100)
+opts.GeoM.Scale(2, 2)
+opts.GeoM.Translate(200, 100)
+
+// Translate then scale: sprite moves to (400, 200) — wrong!
+// The translation is also scaled
+opts.GeoM.Translate(200, 100)
+opts.GeoM.Scale(2, 2)
+```
+
+<Tip>
+  The recommended order is: **Scale → Rotate → Translate**. Scale and rotate relative to the origin, then translate to the final screen position.
+</Tip>
+
+## Rotating around a center point
+
+To rotate a sprite around its own center rather than the world origin, use the translate–rotate–translate-back pattern:
+
+<Steps>
+  <Step title="Translate to origin">
+    Move the image so its center is at (0, 0) by translating by `-width/2, -height/2`.
+  </Step>
+  <Step title="Rotate">
+    Apply the rotation. It now spins around the image's center.
+  </Step>
+  <Step title="Translate to final position">
+    Move the image to its target screen position.
+  </Step>
+</Steps>
+
+```go
+import "math"
+
+func drawRotated(screen, sprite *ebiten.Image, x, y, angle float64) {
+    w, h := sprite.Bounds().Dx(), sprite.Bounds().Dy()
+
+    opts := &ebiten.DrawImageOptions{}
+
+    // Step 1: center at origin
+    opts.GeoM.Translate(-float64(w)/2, -float64(h)/2)
+
+    // Step 2: rotate around origin (which is now the sprite's center)
+    opts.GeoM.Rotate(angle)
+
+    // Step 3: move to final screen position
+    opts.GeoM.Translate(x, y)
+
+    screen.DrawImage(sprite, opts)
+}
+```
+
+## Combining transforms
+
+Every GeoM method post-multiplies the current matrix. You can chain as many operations as you need:
+
+```go
+opts := &ebiten.DrawImageOptions{}
+opts.GeoM.Scale(1.5, 1.5)                          // 1.5× larger
+opts.GeoM.Rotate(math.Pi / 6)                       // 30° rotation
+opts.GeoM.Translate(float64(screenWidth)/2, 100)    // center-top of screen
+screen.DrawImage(sprite, opts)
+```
+
+## Resetting GeoM
+
+`GeoM.Reset()` restores the matrix to identity (no transformation). This is useful when reusing a `DrawImageOptions` struct across multiple draw calls without allocating a new one.
+
+```go
+type Game struct {
+    opts ebiten.DrawImageOptions
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    g.opts.GeoM.Reset()
+    g.opts.GeoM.Translate(g.x, g.y)
+    screen.DrawImage(g.sprite, &g.opts)
+}
+```
+
+## Reference
+
+| Method | Effect |
+|--------|--------|
+| `GeoM.Translate(tx, ty)` | Move image by `(tx, ty)` pixels |
+| `GeoM.Scale(sx, sy)` | Multiply size by `sx` and `sy`; negative values flip |
+| `GeoM.Rotate(theta)` | Rotate by `theta` radians counter-clockwise around origin |
+| `GeoM.Reset()` | Restore to identity (no transform) |
+| `GeoM.Concat(other)` | Post-multiply by another GeoM |
+| `GeoM.Invert()` | Replace with the inverse transform |

@@ -1,0 +1,280 @@
+---
+title: "Writing GPU shaders with the Kage language"
+description: "Learn how to write Kage shaders in Ebitengine, compile them at runtime with NewShader, and apply effects using DrawRectShader and DrawTrianglesShader."
+---
+
+Kage is Ebitengine's Go-like shading language. You write shader programs in Go syntax, and Ebitengine compiles them at runtime to the appropriate GPU language — GLSL on OpenGL, MSL on Metal, and HLSL on Direct3D. No external toolchain or shader files needed; shaders live as `[]byte` strings in your Go source.
+
+## How Kage works
+
+A Kage program is a Go source file with `package main` that defines a `Fragment` function. Ebitengine compiles it to native GPU shaders on startup. The `Fragment` function is called once per output pixel and returns its color.
+
+<Note>
+Kage is a restricted subset of Go. It has no imports, no goroutines, no maps, and no dynamic allocation. All types are numeric or vector types (`vec2`, `vec3`, `vec4`, `mat4`, etc.).
+</Note>
+
+## Compiling a shader
+
+```go
+import "github.com/hajimehoshi/ebiten/v2"
+
+var shaderSrc = []byte(`
+package main
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+    return vec4(1, 0, 0, 1) // solid red
+}
+`)
+
+shader, err := ebiten.NewShader(shaderSrc)
+if err != nil {
+    log.Fatal(err)
+}
+defer shader.Dispose()
+```
+
+Compile shaders once at startup and reuse them — compilation is expensive.
+
+## Drawing with a shader
+
+### DrawRectShader
+
+`DrawRectShader` applies a shader to a rectangular region of the screen:
+
+```go
+op := &ebiten.DrawRectShaderOptions{}
+op.Images[0] = myTexture   // up to 4 source images (slot 0–3)
+op.Uniforms = map[string]any{
+    "Time": float32(g.tick) / 60.0,
+}
+
+screen.DrawRectShader(width, height, shader, op)
+```
+
+`DrawRectShaderOptions` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Images` | `[4]*ebiten.Image` | Source textures available as `imageSrc0`–`imageSrc3` in the shader. |
+| `Uniforms` | `map[string]any` | Values passed to shader uniform variables. |
+| `GeoM` | `ebiten.GeoM` | Geometry transform applied to the destination rectangle. |
+| `Blend` | `ebiten.Blend` | Blend mode for compositing. |
+
+### DrawTrianglesShader
+
+For non-rectangular geometry, use `DrawTrianglesShader`. Pass vertices with per-vertex colors and custom texcoords:
+
+```go
+vertices := []ebiten.Vertex{
+    {DstX: 0,   DstY: 0,   SrcX: 0, SrcY: 0,   ColorR: 1, ColorG: 0, ColorB: 0, ColorA: 1},
+    {DstX: 100, DstY: 0,   SrcX: 1, SrcY: 0,   ColorR: 0, ColorG: 1, ColorB: 0, ColorA: 1},
+    {DstX: 50,  DstY: 100, SrcX: 0, SrcY: 1,   ColorR: 0, ColorG: 0, ColorB: 1, ColorA: 1},
+}
+indices := []uint16{0, 1, 2}
+
+op := &ebiten.DrawTrianglesShaderOptions{}
+op.Images[0] = myTexture
+screen.DrawTrianglesShader(vertices, indices, shader, op)
+```
+
+## Kage shader structure
+
+```go
+package main
+
+// Uniforms — values passed from Go code
+var Time float
+var Resolution vec2
+
+// Fragment is called for every output pixel.
+//   dstPos  — pixel position in the destination image (vec4, xy = pixel coords)
+//   srcPos  — corresponding position in the source texture (vec2)
+//   color   — vertex color (vec4)
+// Returns the RGBA color of the pixel.
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+    // Sample the first source image at srcPos
+    c := imageSrc0At(srcPos)
+    return c
+}
+```
+
+## Sampling source images
+
+Two built-in functions sample source textures:
+
+| Function | Description |
+|---|---|
+| `imageSrc0At(pos vec2) vec4` | Sample image slot 0 with bounds checking (returns transparent outside). |
+| `imageSrc0UnsafeAt(pos vec2) vec4` | Sample image slot 0 without bounds checking (faster; may read garbage outside). |
+| `imageSrc1At(pos vec2) vec4` | Sample image slot 1. Up to `imageSrc3At`. |
+
+```go
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+    // Safe sampling — transparent if srcPos is out of texture bounds
+    return imageSrc0At(srcPos)
+}
+```
+
+## Kage built-in functions
+
+Kage provides GLSL-equivalent math builtins:
+
+```text
+abs, sign, floor, ceil, fract, mod
+min, max, clamp, mix, step, smoothstep
+sin, cos, tan, asin, acos, atan
+sqrt, pow, exp, log, exp2, log2
+length, distance, dot, cross, normalize, reflect
+```
+
+## Example shaders
+
+<Tabs>
+  <Tab title="Color inversion">
+    ```go
+    package main
+
+    func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+        c := imageSrc0At(srcPos)
+        // Invert RGB channels, preserve alpha
+        return vec4(1.0-c.r, 1.0-c.g, 1.0-c.b, c.a)
+    }
+    ```
+  </Tab>
+  <Tab title="Grayscale">
+    ```go
+    package main
+
+    func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+        c := imageSrc0At(srcPos)
+        // Luminance-weighted grayscale
+        gray := 0.299*c.r + 0.587*c.g + 0.114*c.b
+        return vec4(gray, gray, gray, c.a)
+    }
+    ```
+  </Tab>
+  <Tab title="Animated wave">
+    ```go
+    package main
+
+    var Time float
+
+    func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+        // Shift srcPos horizontally by a sine wave
+        offset := sin(srcPos.y*40.0+Time*4.0) * 4.0
+        shifted := vec2(srcPos.x+offset, srcPos.y)
+        return imageSrc0At(shifted)
+    }
+    ```
+
+    In Go, update the uniform each tick:
+
+    ```go
+    op := &ebiten.DrawRectShaderOptions{}
+    op.Images[0] = g.texture
+    op.Uniforms = map[string]any{
+        "Time": float32(g.tick) / 60.0,
+    }
+    screen.DrawRectShader(w, h, g.waveShader, op)
+    g.tick++
+    ```
+  </Tab>
+  <Tab title="Vignette">
+    ```go
+    package main
+
+    func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+        c := imageSrc0At(srcPos)
+
+        // Normalized coordinates centered at (0.5, 0.5)
+        origin, size := imageSrc0Origin(), imageSrc0Size()
+        uv := (srcPos - origin) / size
+        uv = uv*2.0 - vec2(1.0, 1.0)
+
+        vignette := 1.0 - dot(uv, uv)*0.5
+        vignette = clamp(vignette, 0.0, 1.0)
+
+        return vec4(c.rgb*vignette, c.a)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Getting source image origin and size
+
+Because Ebitengine uses texture atlases internally, `srcPos` is in atlas space, not 0–1 UV space. Use these built-ins to convert:
+
+```go
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+    origin := imageSrc0Origin() // top-left corner in atlas coords
+    size   := imageSrc0Size()   // dimensions of the image in atlas coords
+
+    // Normalized [0,1] UV within the image
+    uv := (srcPos - origin) / size
+
+    // ... use uv for effects that need 0–1 coordinates
+    return imageSrc0At(srcPos)
+}
+```
+
+<Warning>
+Do not assume `srcPos` starts at `(0, 0)`. Always subtract `imageSrc0Origin()` before computing UV-based effects, or your shader will produce incorrect results on atlased images.
+</Warning>
+
+## Complete shader example
+
+```go
+package main
+
+import (
+    _ "embed"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+)
+
+//go:embed assets/sprite.png
+var spritePNG []byte
+
+var invertSrc = []byte(`
+package main
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+    c := imageSrc0At(srcPos)
+    return vec4(1.0-c.r, 1.0-c.g, 1.0-c.b, c.a)
+}
+`)
+
+type Game struct {
+    sprite *ebiten.Image
+    shader *ebiten.Shader
+    tick   int
+}
+
+func NewGame() (*Game, error) {
+    img, _, err := ebitenutil.NewImageFromFileSystem(assetsFS, "assets/sprite.png")
+    if err != nil {
+        return nil, err
+    }
+    sh, err := ebiten.NewShader(invertSrc)
+    if err != nil {
+        return nil, err
+    }
+    return &Game{sprite: img, shader: sh}, nil
+}
+
+func (g *Game) Update() error {
+    g.tick++
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    w, h := g.sprite.Bounds().Dx(), g.sprite.Bounds().Dy()
+    op := &ebiten.DrawRectShaderOptions{}
+    op.Images[0] = g.sprite
+    screen.DrawRectShader(w, h, g.shader, op)
+}
+
+func (g *Game) Layout(ow, oh int) (int, int) { return 640, 480 }
+```

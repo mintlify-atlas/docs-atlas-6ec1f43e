@@ -1,0 +1,200 @@
+---
+title: "The Ebitengine game loop: Update, Draw, Layout"
+description: "Learn how Ebitengine's game loop works, including the Game interface, Update, Draw, Layout methods, and how TPS controls game logic timing."
+---
+
+Ebitengine drives every game through a simple, fixed-rate loop. You implement three methods on a struct — `Update`, `Draw`, and `Layout` — and pass it to `ebiten.RunGame`. The engine calls these methods on every tick and frame, keeping your game logic and rendering cleanly separated.
+
+## The Game interface
+
+Your game must satisfy the `ebiten.Game` interface:
+
+```go
+type Game interface {
+    Update() error
+    Draw(screen *ebiten.Image)
+    Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int)
+}
+```
+
+Pass an instance to `ebiten.RunGame` to start the loop. The call blocks until the window is closed or `Update` returns a non-nil error.
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+)
+
+type Game struct{}
+
+func (g *Game) Update() error {
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{0x1a, 0x1a, 0x2e, 0xff})
+}
+
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+    return 640, 480
+}
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("My Game")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+<Note>
+`ebiten.RunGame` never returns while the game is running. Place all initialization before the call and all cleanup after it.
+</Note>
+
+## The three methods
+
+<Steps>
+  <Step title="Update — game logic">
+    Called once per tick (by default, 60 times per second). Use it for physics, AI, collision detection, input polling, and any state mutation. Return a non-`nil` error to terminate the game cleanly.
+
+    ```go
+    func (g *Game) Update() error {
+        g.playerX += g.velocityX
+        g.playerY += g.velocityY
+
+        if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+            return ebiten.Termination
+        }
+        return nil
+    }
+    ```
+
+    <Tip>
+    Never perform rendering inside `Update`. Ebitengine may skip draw calls when the game runs faster than the display refresh rate, but `Update` is always called at the configured TPS.
+    </Tip>
+  </Step>
+
+  <Step title="Draw — rendering">
+    Called once per frame, as fast as the display allows (typically matching the monitor refresh rate). Receives the screen `*ebiten.Image` — draw everything onto it. Ebitengine clears the screen before each `Draw` call.
+
+    ```go
+    func (g *Game) Draw(screen *ebiten.Image) {
+        op := &ebiten.DrawImageOptions{}
+        op.GeoM.Translate(float64(g.playerX), float64(g.playerY))
+        screen.DrawImage(g.playerSprite, op)
+    }
+    ```
+
+    <Warning>
+    Do not read or write game state from `Draw` that is also written in `Update`. `Draw` may be called more or fewer times than `Update` depending on frame rate.
+    </Warning>
+  </Step>
+
+  <Step title="Layout — screen sizing">
+    Called when the window is resized. Return the logical screen dimensions your game operates in, regardless of the physical window size. Ebitengine scales the logical canvas to fit the window automatically.
+
+    ```go
+    func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+        // Fixed logical resolution
+        return 320, 240
+    }
+    ```
+
+    For games that should fill the window at native resolution:
+
+    ```go
+    func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+        return outsideWidth, outsideHeight
+    }
+    ```
+  </Step>
+</Steps>
+
+## Ticks per second (TPS)
+
+`Update` runs at a fixed rate called **ticks per second**. The default is 60 TPS.
+
+| Function | Description |
+|---|---|
+| `ebiten.SetTPS(tps int)` | Set the target TPS. Pass `ebiten.SyncWithFPS` to match the display refresh rate. |
+| `ebiten.TPS() int` | Return the current target TPS setting. |
+| `ebiten.ActualTPS() float64` | Return the measured TPS averaged over recent ticks. Useful for debugging. |
+
+```go
+func main() {
+    ebiten.SetTPS(30) // Run logic at 30 updates per second
+
+    // ...
+    ebiten.RunGame(&Game{})
+}
+```
+
+<Info>
+Separating `Update` (fixed TPS) from `Draw` (free-running frames) is called a **fixed timestep** architecture. It makes game logic deterministic and reproducible regardless of rendering performance.
+</Info>
+
+## Terminating the game
+
+Return `ebiten.Termination` from `Update` to exit gracefully. Any other non-`nil` error is treated as an unexpected failure and propagated back to the caller of `RunGame`.
+
+```go
+func (g *Game) Update() error {
+    if g.shouldQuit {
+        return ebiten.Termination
+    }
+    return nil
+}
+```
+
+## Full working example
+
+```go
+package main
+
+import (
+    "image/color"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    "github.com/hajimehoshi/ebiten/v2/inpututil"
+)
+
+type Game struct {
+    x, y float64
+}
+
+func (g *Game) Update() error {
+    if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
+        return ebiten.Termination
+    }
+    if ebiten.IsKeyPressed(ebiten.KeyRight) {
+        g.x += 2
+    }
+    if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+        g.x -= 2
+    }
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{0x10, 0x10, 0x20, 0xff})
+    ebitenutil.DebugPrintAt(screen, "Use arrow keys to move", 10, 10)
+}
+
+func (g *Game) Layout(ow, oh int) (int, int) {
+    return 640, 480
+}
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Game Loop Demo")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```

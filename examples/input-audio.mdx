@@ -1,0 +1,133 @@
+---
+title: "Input handling and audio examples in Ebitengine"
+description: "Eight Ebitengine examples for keyboard, gamepad, mouse drag, mouse wheel, freehand painting, audio playback, a playable piano, and text input."
+keywords: ["ebitengine", "input", "audio", "keyboard", "gamepad", "mouse", "drag", "paint", "piano", "typewriter"]
+---
+
+Handling player input and playing audio are core parts of any game. These examples cover the full range of Ebitengine's input APIs — keyboard, gamepad, mouse buttons, drag, wheel, and text entry — alongside audio playback using the `audio` package. Each example is a standalone program you can run and inspect.
+
+<Tip>
+  All examples are hosted live at [ebitengine.org/en/examples/](https://ebitengine.org/en/examples/) if you want to try them before running locally.
+</Tip>
+
+## Keyboard and gamepad
+
+<AccordionGroup>
+  <Accordion title="Keyboard — keyboard input handling" icon="keyboard">
+    Visualizes every key on the keyboard and highlights keys as they are pressed. Demonstrates `ebiten.IsKeyPressed` for continuous input, `inpututil.IsKeyJustPressed` for single-frame detection, and how to iterate over all key codes to build an input display.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/keyboard@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/keyboard) · [Play in browser](https://ebitengine.org/en/examples/keyboard.html)
+  </Accordion>
+
+  <Accordion title="Gamepad — gamepad and controller input" icon="gamepad-2">
+    Detects connected gamepads and displays the state of every button and axis in real time. Shows how to enumerate gamepads with `ebiten.AppendGamepadIDs`, read axis values with `ebiten.GamepadAxisValue`, and check button state with `ebiten.IsGamepadButtonPressed`.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/gamepad@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/gamepad) · [Play in browser](https://ebitengine.org/en/examples/gamepad.html)
+  </Accordion>
+</AccordionGroup>
+
+## Mouse input
+
+<AccordionGroup>
+  <Accordion title="Drag — mouse drag interaction" icon="hand">
+    Implements draggable objects that can be picked up and moved around the screen with the mouse. Demonstrates hit-testing with mouse coordinates, tracking drag state across frames, and updating object positions based on cursor delta.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/drag@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/drag) · [Play in browser](https://ebitengine.org/en/examples/drag.html)
+  </Accordion>
+
+  <Accordion title="Paint — freehand painting with mouse" icon="pen">
+    A simple paint program that lets you draw freehand strokes by holding and moving the mouse. Shows how to capture `ebiten.CursorPosition`, detect held mouse buttons with `ebiten.IsMouseButtonPressed`, and write painted pixels persistently to an off-screen `ebiten.Image`.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/paint@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/paint) · [Play in browser](https://ebitengine.org/en/examples/paint.html)
+  </Accordion>
+
+  <Accordion title="Wheel — mouse wheel input" icon="mouse">
+    Reads mouse wheel scroll deltas and uses them to scroll content on screen. Demonstrates `ebiten.Wheel` which returns the X and Y scroll amounts per frame, and how to accumulate scroll position smoothly.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/wheel@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/wheel) · [Play in browser](https://ebitengine.org/en/examples/wheel.html)
+  </Accordion>
+</AccordionGroup>
+
+## Audio
+
+<AccordionGroup>
+  <Accordion title="Audio — audio playback" icon="volume-2">
+    Loads and plays a looping audio file using the `audio` package. Demonstrates creating an `audio.Context`, decoding an OGG or WAV file, creating a player with `audio.NewPlayer`, and controlling play/pause.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/audio@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/audio) · [Play in browser](https://ebitengine.org/en/examples/audio.html)
+  </Accordion>
+
+  <Accordion title="Piano — playable piano with audio" icon="music">
+    A playable on-screen piano keyboard that generates and plays synthesized tones when keys are pressed. Shows how to synthesize audio samples procedurally in Go and stream them to an `audio.Player` for low-latency playback.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/piano@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/piano) · [Play in browser](https://ebitengine.org/en/examples/piano.html)
+  </Accordion>
+</AccordionGroup>
+
+## Text input
+
+<AccordionGroup>
+  <Accordion title="Typewriter — text input handling" icon="type">
+    Displays typed text on screen with a blinking cursor, accepting input from the keyboard. Demonstrates `ebiten.AppendInputChars` for Unicode-aware text input (the correct approach for localisation and IME support), and how to handle backspace and other editing keys.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/typewriter@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/typewriter) · [Play in browser](https://ebitengine.org/en/examples/typewriter.html)
+  </Accordion>
+</AccordionGroup>
+
+## Input API quick reference
+
+<Note>
+  Use `inpututil` (from `github.com/hajimehoshi/ebiten/v2/inpututil`) for edge-triggered input such as "just pressed" and "just released". The base `ebiten` package provides level-triggered "is currently pressed" queries.
+</Note>
+
+| Task | API |
+|------|-----|
+| Key held down | `ebiten.IsKeyPressed(key)` |
+| Key pressed this frame | `inpututil.IsKeyJustPressed(key)` |
+| Mouse button held | `ebiten.IsMouseButtonPressed(btn)` |
+| Cursor position | `ebiten.CursorPosition()` |
+| Mouse wheel delta | `ebiten.Wheel()` |
+| Text input (Unicode) | `ebiten.AppendInputChars(runes)` |
+| List connected gamepads | `ebiten.AppendGamepadIDs(ids)` |
+| Gamepad axis value | `ebiten.GamepadAxisValue(id, axis)` |
+| Gamepad button held | `ebiten.IsGamepadButtonPressed(id, btn)` |

@@ -1,0 +1,267 @@
+---
+title: "Handling keyboard, mouse, and gamepad input"
+description: "How to poll keyboard, mouse, touch, and gamepad input in Ebitengine, and detect one-shot press and release events with the inpututil package."
+---
+
+Ebitengine provides a polling-based input API. Call input functions inside `Update` on each tick to read the current device state. For detecting single presses (key-just-pressed / key-just-released), import the `inpututil` sub-package which tracks state transitions between ticks.
+
+## Keyboard
+
+### Held keys
+
+`ebiten.IsKeyPressed` returns `true` for every tick while the key is held down:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2"
+
+func (g *Game) Update() error {
+    if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+        g.x -= 2
+    }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+        g.x += 2
+    }
+    if ebiten.IsKeyPressed(ebiten.KeySpace) {
+        g.jump()
+    }
+    return nil
+}
+```
+
+### One-shot key events
+
+`inpututil.IsKeyJustPressed` returns `true` only on the first tick a key goes down. `IsKeyJustReleased` fires on the tick it comes back up:
+
+```go
+import (
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/inpututil"
+)
+
+func (g *Game) Update() error {
+    if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+        g.confirmSelection()
+    }
+    if inpututil.IsKeyJustReleased(ebiten.KeySpace) {
+        g.releaseChargedShot()
+    }
+    return nil
+}
+```
+
+### Common key constants
+
+<AccordionGroup>
+  <Accordion title="Arrow and movement keys">
+    ```
+    ebiten.KeyArrowUp    ebiten.KeyArrowDown
+    ebiten.KeyArrowLeft  ebiten.KeyArrowRight
+    ebiten.KeyW  ebiten.KeyA  ebiten.KeyS  ebiten.KeyD
+    ```
+  </Accordion>
+  <Accordion title="Action and modifier keys">
+    ```
+    ebiten.KeySpace   ebiten.KeyEnter    ebiten.KeyEscape
+    ebiten.KeyShift   ebiten.KeyControl  ebiten.KeyAlt
+    ebiten.KeyBackspace
+    ```
+  </Accordion>
+  <Accordion title="Function and numeral keys">
+    ```
+    ebiten.KeyF1 … ebiten.KeyF12
+    ebiten.KeyDigit0 … ebiten.KeyDigit9
+    ebiten.KeyNumpad0 … ebiten.KeyNumpad9
+    ```
+  </Accordion>
+  <Accordion title="All pressed keys (polling)">
+    ```go
+    keys := inpututil.AppendPressedKeys(nil)
+    for _, k := range keys {
+        fmt.Println(k)
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Mouse
+
+### Button state
+
+```go
+func (g *Game) Update() error {
+    if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+        x, y := ebiten.CursorPosition()
+        g.paint(x, y)
+    }
+    if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+        g.openContextMenu()
+    }
+    return nil
+}
+```
+
+Available button constants: `ebiten.MouseButtonLeft`, `ebiten.MouseButtonMiddle`, `ebiten.MouseButtonRight`.
+
+### Cursor position
+
+```go
+x, y := ebiten.CursorPosition() // returns (int, int) in logical screen coordinates
+```
+
+### Scroll wheel
+
+```go
+xOff, yOff := ebiten.Wheel() // returns (float64, float64)
+if yOff > 0 {
+    g.zoomIn()
+} else if yOff < 0 {
+    g.zoomOut()
+}
+```
+
+## Touch
+
+Touch input uses a persistent ID per active finger. Append current touch IDs each tick, then query position by ID:
+
+```go
+func (g *Game) Update() error {
+    g.touchIDs = ebiten.AppendTouchIDs(g.touchIDs[:0])
+
+    for _, id := range g.touchIDs {
+        x, y := ebiten.TouchPosition(id)
+        g.handleTouch(id, x, y)
+    }
+    return nil
+}
+```
+
+For one-shot touch events, use the `inpututil` equivalents:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/inpututil"
+
+// IDs that began this tick
+justStarted := inpututil.AppendJustPressedTouchIDs(nil)
+
+// IDs that ended this tick
+justEnded := inpututil.AppendJustReleasedTouchIDs(nil)
+```
+
+<Info>
+On desktop platforms, touch events are not triggered by mouse input. Use both mouse and touch handlers if you need to support both.
+</Info>
+
+## Gamepad
+
+### Detecting connected gamepads
+
+```go
+func (g *Game) Update() error {
+    g.gamepadIDs = ebiten.AppendGamepadIDs(g.gamepadIDs[:0])
+
+    for _, id := range g.gamepadIDs {
+        if ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton0) {
+            g.jump()
+        }
+    }
+    return nil
+}
+```
+
+### Analog axes
+
+```go
+// Returns a value in the range [-1, 1]
+axisValue := ebiten.GamepadAxisValue(id, 0) // axis 0 = left stick X
+
+if axisValue > 0.2 {
+    g.x += axisValue * speed
+}
+```
+
+### Standard gamepad layout
+
+For controllers that support the standard layout (most modern gamepads), use the `StandardGamepad` API instead of raw button indices:
+
+```go
+if ebiten.IsStandardGamepadButtonPressed(id, ebiten.StandardGamepadButtonRightBottom) {
+    g.jump() // A on Xbox, Cross on PS
+}
+
+lx := ebiten.StandardGamepadAxisValue(id, ebiten.StandardGamepadAxisLeftStickHorizontal)
+ly := ebiten.StandardGamepadAxisValue(id, ebiten.StandardGamepadAxisLeftStickVertical)
+```
+
+### One-shot gamepad buttons
+
+```go
+if inpututil.IsStandardGamepadButtonJustPressed(id, ebiten.StandardGamepadButtonRightBottom) {
+    g.onButtonDown()
+}
+```
+
+## Complete input example
+
+```go
+package main
+
+import (
+    "image/color"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    "github.com/hajimehoshi/ebiten/v2/inpututil"
+)
+
+type Game struct {
+    x, y      float64
+    touchIDs  []ebiten.TouchID
+    padIDs    []ebiten.GamepadID
+}
+
+func (g *Game) Update() error {
+    // Keyboard movement
+    if ebiten.IsKeyPressed(ebiten.KeyArrowRight) { g.x += 2 }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowLeft)  { g.x -= 2 }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowDown)  { g.y += 2 }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowUp)    { g.y -= 2 }
+
+    // Quit on Escape (one-shot)
+    if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+        return ebiten.Termination
+    }
+
+    // Mouse click teleport
+    if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+        mx, my := ebiten.CursorPosition()
+        g.x, g.y = float64(mx), float64(my)
+    }
+
+    // Gamepad
+    g.padIDs = ebiten.AppendGamepadIDs(g.padIDs[:0])
+    for _, id := range g.padIDs {
+        lx := ebiten.StandardGamepadAxisValue(id, ebiten.StandardGamepadAxisLeftStickHorizontal)
+        ly := ebiten.StandardGamepadAxisValue(id, ebiten.StandardGamepadAxisLeftStickVertical)
+        g.x += lx * 3
+        g.y += ly * 3
+    }
+
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{0x10, 0x10, 0x20, 0xff})
+    ebitenutil.DebugPrintAt(screen, "Move with arrows, click to teleport", 8, 8)
+}
+
+func (g *Game) Layout(ow, oh int) (int, int) { return 640, 480 }
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Input Demo")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```

@@ -1,0 +1,258 @@
+---
+title: "What's new in Ebitengine v2"
+description: "Highlights of every Ebitengine v2.x release: the Game interface, vector package, ColorScale, text/v2, Kage shader improvements, and performance gains."
+keywords: ['ebitengine', 'ebiten', 'release notes', 'v2', 'changelog', 'game engine', 'go']
+---
+
+Ebitengine v2 is the second major generation of the engine, first released in January 2021. It cleaned up a decade of accumulated API debt, adopted Go module conventions with a versioned import path, and introduced the `Game` interface as the single entry-point for all games. Subsequent minor releases have progressively extended the engine with a vector graphics package, improved blending, a modern text rendering system, and a substantially overhauled Kage shader language.
+
+This page summarises the highlights of each v2.x minor release. For a step-by-step guide to porting a v1 project, see the [migration guide](/releases/v2-migration).
+
+<AccordionGroup>
+
+  <Accordion title="v2.0 — New import path, Game interface, and API clean-up">
+
+    **Released: January 2021**
+
+    v2.0 is a breaking release. All import paths changed and several deprecated symbols were removed. Existing v1 code requires migration before it will compile against v2.
+
+    ### New import path
+
+    The module path changed from `github.com/hajimehoshi/ebiten` to `github.com/hajimehoshi/ebiten/v2`. Every import in your project must be updated.
+
+    ```go
+    // Before (v1)
+    import "github.com/hajimehoshi/ebiten"
+    import "github.com/hajimehoshi/ebiten/ebitenutil"
+
+    // After (v2)
+    import "github.com/hajimehoshi/ebiten/v2"
+    import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    ```
+
+    ### The `Game` interface
+
+    `ebiten.Run` is replaced by `ebiten.RunGame`, which accepts a value that implements the `Game` interface. This separates update logic from draw logic at the type level and eliminates the confusion between the old `ebiten.Update` and `ebiten.Draw` function signatures.
+
+    ```go
+    type Game interface {
+        Update() error
+        Draw(screen *ebiten.Image)
+        Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int)
+    }
+    ```
+
+    ### `DrawImage` options
+
+    `(*ebiten.Image).DrawImage` now accepts `*ebiten.DrawImageOptions` rather than a struct value, making it consistent with every other drawing call and enabling nil to mean "use defaults".
+
+    ### Removed APIs
+
+    All symbols that were deprecated during the v1.x cycle were removed in v2.0. This includes the standalone `ebiten.Draw` and `ebiten.Update` functions, `ebiten.IsDrawingSkipped`, and older image-creation helpers.
+
+    <Note>
+      Run `go build ./...` immediately after updating your import paths. The compiler will surface every removed symbol as a missing identifier.
+    </Note>
+
+    ### Sub-packages renamed
+
+    | v1 path | v2 path |
+    |---|---|
+    | `ebiten/audio` | `ebiten/v2/audio` |
+    | `ebiten/inpututil` | `ebiten/v2/inpututil` |
+    | `ebiten/text` | `ebiten/v2/text` |
+    | `ebiten/ebitenutil` | `ebiten/v2/ebitenutil` |
+
+  </Accordion>
+
+  <Accordion title="v2.1 — Transparent windows, audio improvements, and new input APIs">
+
+    **Released: June 2021**
+
+    v2.1 is a backwards-compatible release that adds new platform features and quality-of-life improvements.
+
+    ### Transparent windows
+
+    `ebiten.SetScreenTransparent(true)` enables per-pixel alpha on the game window. Combined with `ebiten.SetScreenClearedEveryFrame(false)` and a transparent clear color, this allows overlay-style applications and desktop widgets built entirely in Go.
+
+    ```go
+    func main() {
+        ebiten.SetScreenTransparent(true)
+        ebiten.SetWindowDecorated(false)
+        if err := ebiten.RunGame(&Game{}); err != nil {
+            log.Fatal(err)
+        }
+    }
+    ```
+
+    ### `ebiten.SetScreenClearedEveryFrame`
+
+    Games that manage their own clearing (or that accumulate drawing across frames) can now disable the automatic per-frame clear:
+
+    ```go
+    ebiten.SetScreenClearedEveryFrame(false)
+    ```
+
+    ### Audio improvements
+
+    - `audio.NewInfiniteLoop` and `audio.NewInfiniteLoopWithIntro` make seamless music loops straightforward without manual byte-level offset arithmetic.
+    - The `audio.Player` type gained `SetBufferSize` for fine-grained latency control.
+
+    ### `inpututil` additions
+
+    `inpututil.IsKeyJustPressed` and `inpututil.IsKeyJustReleased` received complementary gamepad and touch variants, making one-shot input detection consistent across all device types.
+
+    ### `ebiten.SetWindowSizeLimits`
+
+    Windows can now be constrained to a minimum and maximum size independently of the logical screen resolution:
+
+    ```go
+    ebiten.SetWindowSizeLimits(320, 240, 1920, 1080)
+    ```
+
+  </Accordion>
+
+  <Accordion title="v2.2 — Vector graphics package and blend mode overhaul">
+
+    **Released: December 2021**
+
+    v2.2 ships the first version of the `vector` sub-package, giving games a straightforward API for anti-aliased 2D vector shapes without requiring an external library.
+
+    ### `vector` package
+
+    The new `github.com/hajimehoshi/ebiten/v2/vector` package exposes a `Path` type that supports lines, Bézier curves, and arcs. Paths can be stroked or filled onto any `*ebiten.Image`.
+
+    ```go
+    var path vector.Path
+    path.MoveTo(50, 50)
+    path.LineTo(150, 50)
+    path.LineTo(100, 130)
+    path.Close()
+
+    // Fill the triangle
+    op := &vector.FillOptions{Color: color.RGBA{0xff, 0x00, 0x00, 0xff}}
+    vector.Fill(screen, &path, op)
+    ```
+
+    ### `ColorScale` type
+
+    `ebiten.ColorScale` is introduced as a lightweight alternative to `ebiten.ColorM` for the common case of scaling RGBA channels. It avoids the overhead of a full 5×4 matrix when you only need brightness or alpha adjustments.
+
+    ```go
+    var op ebiten.DrawImageOptions
+    op.ColorScale.ScaleAlpha(0.5) // 50 % opacity
+    screen.DrawImage(sprite, &op)
+    ```
+
+    ### Blend mode improvements
+
+    `ebiten.DrawImageOptions` gains a `Blend` field of type `ebiten.Blend`, replacing the older `CompositeMode` constants with a more expressive struct-based API that maps directly to GPU blend equations.
+
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    op.Blend = ebiten.BlendSourceOver // default, explicit
+    op.Blend = ebiten.BlendLighter    // additive
+    ```
+
+    ### `ebiten.NewImageFromImage` nil subimage fix
+
+    Subimage bounds that fall outside the parent image no longer panic; they return an empty image.
+
+  </Accordion>
+
+  <Accordion title="v2.3 — text/v2 package and Kage improvements">
+
+    **Released: August 2022**
+
+    v2.3 introduces the `text/v2` sub-package as the foundation of a modernised text-rendering system and continues work on the Kage shading language.
+
+    ### `text/v2` package
+
+    The new `github.com/hajimehoshi/ebiten/v2/text/v2` package separates font face management from drawing, supports variable fonts, and integrates with the `golang.org/x/image/font/opentype` and `golang.org/x/image/font/sfnt` packages. Existing code using `text.Draw` continues to work; `text/v2` is an opt-in upgrade path.
+
+    ```go
+    face, err := text.NewGoTextFace(&text.GoTextFaceSource{...}, nil)
+    face.Size = 24
+
+    op := &text.DrawOptions{}
+    op.GeoM.Translate(32, 32)
+    text.Draw(screen, "Hello, Ebitengine!", face, op)
+    ```
+
+    ### Kage shader improvements
+
+    - `imageSrcNPixels()` built-in added for querying source image dimensions inside a shader.
+    - Integer types (`int`, `ivec2`, `ivec3`, `ivec4`) are now supported in uniform variables.
+    - Improved error messages when shader compilation fails.
+
+    ### `ebiten.SetWindowMousePassthrough`
+
+    On desktop platforms, mouse events can now pass through the window to the application behind it:
+
+    ```go
+    ebiten.SetWindowMousePassthrough(true)
+    ```
+
+    This is useful for HUD overlays or debugging tools that need to remain visible without capturing input.
+
+    ### `ebiten.ColorScale` in `DrawTrianglesOptions`
+
+    `DrawTrianglesShaderOptions` gained a `ColorScale` field, aligning triangle rendering with the rest of the drawing API.
+
+  </Accordion>
+
+  <Accordion title="v2.4 — Kage updates, performance, and new platform support">
+
+    **Released: March 2023**
+
+    v2.4 focuses on Kage shader expressiveness, rendering performance, and broadening platform support.
+
+    ### Kage: `texelFetch` and sampler improvements
+
+    Kage shaders can now use `imageSrcRegionOnTexture()` to retrieve the exact texture-coordinate region for a source image, enabling effects like tiling and UV manipulation without coordinate guesswork. Additional built-in functions align Kage more closely with GLSL ES 3.0 semantics.
+
+    ### Stencil-based rendering path
+
+    The internal rendering pipeline switched from a stencil-less path to one that uses stencil buffers for mask operations, improving the correctness of compositing edge cases and enabling future clipping APIs.
+
+    ### `ebiten.DrawTrianglesShader` color attribute
+
+    The `Vertex` struct gained a dedicated `ColorR`, `ColorG`, `ColorB`, and `ColorA` field set, replacing the single `Color` interface. This is a small breaking change; update any custom vertex data accordingly.
+
+    ```go
+    vertices := []ebiten.Vertex{
+        {
+            DstX: 0, DstY: 0,
+            SrcX: 0, SrcY: 0,
+            ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+        },
+    }
+    ```
+
+    ### Performance improvements
+
+    - Batched draw calls are now recognised and merged more aggressively, reducing GPU command overhead in scenes with many sprites.
+    - The software renderer used in testing and CI is substantially faster.
+
+    ### New platform notes
+
+    - WebAssembly builds using the `wasip1` GOOS target are officially supported.
+    - Improvements to the Nintendo Switch port (available through a separate, private repository for licensed developers).
+
+    <Tip>
+      Upgrade to v2.4 even if you do not use Kage shaders — the draw-call batching improvements are transparent and reduce CPU overhead in most games.
+    </Tip>
+
+  </Accordion>
+
+</AccordionGroup>
+
+## Upgrading
+
+Add the latest v2 release to your module:
+
+```bash
+go get github.com/hajimehoshi/ebiten/v2@latest
+```
+
+If you are migrating from v1, read the [v1 → v2 migration guide](/releases/v2-migration) first.

@@ -1,0 +1,43 @@
+---
+title: "Ebitengine examples: games, graphics, and input"
+description: "Explore runnable Ebitengine examples covering complete games, graphics rendering, Kage shaders, input handling, and audio playback. Run any with go run."
+keywords: ["ebitengine", "examples", "go game engine", "2d games", "graphics"]
+---
+
+The fastest way to learn Ebitengine is to run real code. Every example in this section is a self-contained Go program that compiles and runs with a single command — no project setup required. Browse by category below, or pick any example name and run it directly.
+
+## Running an example
+
+Any Ebitengine example can be run without cloning the repository. Replace `EXAMPLE_NAME` with the name of the example you want to run:
+
+```bash
+go run github.com/hajimehoshi/ebiten/v2/examples/EXAMPLE_NAME@latest
+```
+
+For instance, to run the 2048 sliding tile puzzle:
+
+```bash
+go run github.com/hajimehoshi/ebiten/v2/examples/2048@latest
+```
+
+<Tip>
+  You need Go 1.21 or later installed. On Linux, install the required system packages for your display server (X11 or Wayland) if you haven't already.
+</Tip>
+
+## Browse by category
+
+<CardGroup cols={3}>
+  <Card title="Games" icon="gamepad-2" href="/examples/games">
+    Complete playable games including a 2048 puzzle, Flappy Bird clone, Tetris-like blocks game, raycasting demo, and more.
+  </Card>
+  <Card title="Graphics" icon="image" href="/examples/graphics">
+    Rendering techniques: sprites, animation, particles, fractals, Perlin noise, custom Kage shaders, blur, and color manipulation.
+  </Card>
+  <Card title="Input and audio" icon="keyboard" href="/examples/input-audio">
+    Input handling for keyboard, gamepad, mouse drag, and mouse wheel, plus audio playback, a playable piano, and text input.
+  </Card>
+</CardGroup>
+
+## Source code
+
+All example source files live in the Ebitengine repository under [`examples/`](https://github.com/hajimehoshi/ebiten/tree/main/examples/). You can also view and interact with each example live at [ebitengine.org/en/examples/](https://ebitengine.org/en/examples/).

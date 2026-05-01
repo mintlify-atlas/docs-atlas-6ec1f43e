@@ -1,0 +1,166 @@
+---
+title: "Hello, World! — Your first Ebitengine window"
+description: "Write a complete Ebitengine program that opens a window and fills it with a solid color. Covers the Game interface, Update, Draw, Layout, and RunGame."
+---
+
+The classic first program for Ebitengine opens a window and paints it with a solid color. This page walks through every line so you understand what each part does before adding any game logic.
+
+## The complete program
+
+Create a file called `main.go` in an empty directory with a Go module (see [Installation](/installation) if you haven't done that yet):
+
+```go main.go
+package main
+
+import (
+    "image/color"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+)
+
+// Game holds all state for our game. For now it is empty because
+// a solid-color screen has no state to track.
+type Game struct{}
+
+// Update is called 60 times per second. It is where game logic lives.
+// Returning nil keeps the game running; returning any error stops it.
+func (g *Game) Update() error {
+    return nil
+}
+
+// Draw is called once per display frame to render the game.
+// screen is the *ebiten.Image that will be shown on the window.
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{R: 0x1a, G: 0x1a, B: 0x2e, A: 0xff})
+}
+
+// Layout returns the logical screen dimensions your game uses.
+// Ebitengine scales the logical screen to fit the OS window automatically.
+func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+    return 640, 480
+}
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Hello, World!")
+
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Run it from the directory that contains `main.go`:
+
+```bash
+go run .
+```
+
+A 640×480 window with a dark navy background appears. Close it with the window's close button or press `Ctrl+C` in your terminal.
+
+## How it works
+
+### The Game struct
+
+```go
+type Game struct{}
+```
+
+`Game` is your game's central type. It holds all mutable state — positions, scores, timers, and so on. Here it is empty because a static color screen has nothing to track.
+
+### Update
+
+```go
+func (g *Game) Update() error {
+    return nil
+}
+```
+
+`Update` runs at a fixed **60 ticks per second** by default. All game logic — reading input, moving objects, running physics — happens here. Returning `nil` tells Ebitengine to keep running. Return any non-nil `error` to stop the loop; `ebiten.Termination` is the conventional value for a clean exit.
+
+### Draw
+
+```go
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{R: 0x1a, G: 0x1a, B: 0x2e, A: 0xff})
+}
+```
+
+`Draw` receives a `*ebiten.Image` representing the window's back buffer. Every call starts with that image cleared to transparent black, so you should always fill or draw something. Here, `Fill` paints every pixel the given RGBA color.
+
+`color.RGBA` fields are `uint8` values in the range 0–255. Setting `A` to `0xff` (255) makes the color fully opaque.
+
+<Note>
+  `Draw` may be called more or fewer times than `Update` depending on the display's refresh rate. Never mutate game state in `Draw` — read state only. This keeps your game deterministic regardless of frame rate.
+</Note>
+
+### Layout
+
+```go
+func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+    return 640, 480
+}
+```
+
+`Layout` tells Ebitengine the **logical resolution** of your game. `outsideWidth` and `outsideHeight` are the current OS window size in device-independent pixels. The returned `screenWidth` and `screenHeight` are the resolution your `Draw` function works in.
+
+Ebitengine automatically scales the logical screen to fill the window, letterboxing or pillarboxing when the aspect ratios differ. A common pattern is to return a fixed resolution regardless of window size, keeping your game's coordinate system stable.
+
+### main
+
+```go
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Hello, World!")
+
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+`SetWindowSize` sets the initial OS window size in device-independent pixels. `SetWindowTitle` sets the window's title bar text. Both can be called at any time, including from inside `Update`.
+
+`RunGame` starts the game loop. It blocks until the loop ends — either because the window was closed, `Update` returned an error, or the program was interrupted. Pass a pointer to your `Game` struct so Ebitengine can call its methods.
+
+## Responding to the Escape key
+
+A common addition to any hello-world is a keyboard shortcut to close the window:
+
+```go
+func (g *Game) Update() error {
+    if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+        return ebiten.Termination
+    }
+    return nil
+}
+```
+
+`ebiten.IsKeyPressed` returns `true` for every tick the key is held. `ebiten.Termination` is a sentinel error value that causes `RunGame` to return `nil` instead of propagating the error — a clean exit.
+
+## Drawing text
+
+To draw text on the screen, use the `github.com/hajimehoshi/ebiten/v2/ebitenutil` package for quick debug output, or the `text/v2` package for full typography:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{R: 0x1a, G: 0x1a, B: 0x2e, A: 0xff})
+    ebitenutil.DebugPrint(screen, "Hello, World!")
+}
+```
+
+`DebugPrint` renders a small white bitmap font in the top-left corner. It is designed for quick debugging, not production UI.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Your first game" icon="gamepad" href="/your-first-game">
+    Add game state, keyboard input, and a moving rectangle.
+  </Card>
+  <Card title="Game loop" icon="arrow-rotate-right" href="/concepts/game-loop">
+    Deep dive into tick rate, frame rate, and the Update/Draw separation.
+  </Card>
+</CardGroup>

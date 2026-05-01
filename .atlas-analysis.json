@@ -1,21 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Ebitengine",
+  "projectType": "framework",
+  "projectName": "Ebitengine",
+  "projectDescription": "Ebitengine is an open source, dead simple 2D game engine for the Go programming language with multi-platform deployment support.",
   "theme": "palm",
-  "colors": {
-    "primary": "#db5620"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/ebitengine/ebiten.org"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/ebitengine/ebiten.org"
-    }
-  },
+  "primaryColor": "#db5620",
+  "lightColor": null,
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -95,5 +85,31 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Simple API for 2D game development in Go",
+    "Cross-platform: Windows, macOS, Linux, iOS, Android, WebAssembly",
+    "Hardware-accelerated rendering via OpenGL/Metal/DirectX",
+    "Built-in audio playback support",
+    "Custom shader support via Kage shading language",
+    "Gamepad and touch input handling",
+    "Image/sprite management and drawing primitives",
+    "Go module support with no CGo dependencies on most platforms"
+  ],
+  "publicApiSurface": [
+    "ebiten.Game interface (Update, Draw, Layout)",
+    "ebiten.RunGame(game Game) error",
+    "ebiten.Image — drawing target/source",
+    "ebiten.DrawImageOptions — geometry matrix, color scale, blend mode",
+    "ebiten.NewImage(width, height int) *Image",
+    "ebiten.IsKeyPressed(key Key) bool",
+    "ebiten.IsMouseButtonPressed(mouseButton MouseButton) bool",
+    "ebiten.AppendTouchIDs(touchIDs []TouchID) []TouchID",
+    "audio.NewContext(sampleRate int) (*audio.Context, error)",
+    "audio.NewPlayer(context *Context, src io.Reader) (*Player, error)",
+    "ebiten.NewShader(src []byte) (*Shader, error)",
+    "ebiten.DrawRectShaderOptions",
+    "ebitenutil — debug utilities and image loading helpers",
+    "inpututil — input state transition helpers"
+  ]
 }

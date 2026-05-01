@@ -1,0 +1,109 @@
+---
+title: "Complete game examples built with Ebitengine"
+description: "Seven complete games built with Ebitengine: a 2048 puzzle, Flappy Bird clone, Tetris blocks, raycasting, tile maps, isometric worlds, and Conway's Life."
+keywords: ["ebitengine", "game examples", "2048", "flappy bird", "tetris", "raycasting", "tile map", "isometric", "conway's life"]
+---
+
+These examples are complete, playable games rather than isolated demos. Each one demonstrates a distinct set of patterns — game state management, physics, map rendering, procedural generation — that you can adapt to your own projects. Run any of them with a single `go run` command.
+
+<Tip>
+  All examples are hosted live at [ebitengine.org/en/examples/](https://ebitengine.org/en/examples/) if you want to try them before running locally.
+</Tip>
+
+## Games
+
+<AccordionGroup>
+  <Accordion title="2048 — sliding tile puzzle" icon="grid-2x2">
+    A fully playable clone of the 2048 sliding tile puzzle. Demonstrates grid-based game state, keyboard input for tile movement, score tracking, and drawing text and rectangles onto a canvas.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/2048@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/2048) · [Play in browser](https://ebitengine.org/en/examples/2048.html)
+  </Accordion>
+
+  <Accordion title="Flappy — Flappy Bird clone" icon="bird">
+    A Flappy Bird clone with gravity, pipe obstacles, collision detection, and a score counter. Shows how to structure a game loop with distinct states (title, playing, game over) and how to handle single-button tap input.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/flappy@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/flappy) · [Play in browser](https://ebitengine.org/en/examples/flappy.html)
+  </Accordion>
+
+  <Accordion title="Blocks — Tetris-like block game" icon="blocks">
+    A Tetris-style falling-block game with rotation, line clearing, and a preview panel. Demonstrates piece rotation logic, keyboard repeat handling, and drawing colored rectangles to represent the board.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/blocks@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/blocks) · [Play in browser](https://ebitengine.org/en/examples/blocks.html)
+  </Accordion>
+
+  <Accordion title="Raycasting — 3D-style first-person renderer" icon="eye">
+    A Wolf3D-style raycasting engine that renders a 3D-looking first-person view of a 2D grid map. Shows how to implement a raycasting loop, project walls onto the screen, and handle first-person movement and rotation.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/raycasting@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/raycasting) · [Play in browser](https://ebitengine.org/en/examples/raycasting.html)
+  </Accordion>
+
+  <Accordion title="Tiles — tile map rendering" icon="map">
+    Demonstrates how to render a scrolling tile map from a tile sheet image. Covers defining a tile map as a 2D array, computing source rectangles from a tile atlas, and efficiently drawing many tiles per frame with `DrawImage`.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/tiles@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/tiles) · [Play in browser](https://ebitengine.org/en/examples/tiles.html)
+  </Accordion>
+
+  <Accordion title="Isometric — isometric tile world" icon="layers-2">
+    Renders a world using an isometric (diamond-grid) projection. Shows how to convert between tile coordinates and screen coordinates in an isometric layout and how to control draw order for correct depth sorting.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/isometric@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/isometric) · [Play in browser](https://ebitengine.org/en/examples/isometric.html)
+  </Accordion>
+
+  <Accordion title="Life — Conway's Game of Life" icon="atom">
+    Conway's Game of Life implemented with a large cell grid. Demonstrates how to store and update a two-dimensional boolean grid efficiently, toggle cells with mouse clicks, and render many small cells per frame.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/life@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/life) · [Play in browser](https://ebitengine.org/en/examples/life.html)
+  </Accordion>
+</AccordionGroup>
+
+## What these examples cover
+
+<CardGroup cols={2}>
+  <Card title="Game loop patterns" icon="rotate-cw">
+    All examples follow the `ebiten.Game` interface: `Update` for logic, `Draw` for rendering, and `Layout` for screen size. Compare how each game structures these three methods.
+  </Card>
+  <Card title="Input handling" icon="gamepad-2">
+    Examples use keyboard, mouse clicks, and (in Flappy) single-key tap input. See how `ebiten.IsKeyPressed` and `inpututil.IsKeyJustPressed` differ in practice.
+  </Card>
+  <Card title="State machines" icon="git-branch">
+    Flappy and Blocks both use an explicit game-state enum (title screen, playing, game over). This pattern keeps `Update` logic clean as games grow.
+  </Card>
+  <Card title="Drawing primitives" icon="pen-tool">
+    2048 and Blocks draw colored rectangles and text directly rather than using sprites, showing that you don't need image assets to build a complete game.
+  </Card>
+</CardGroup>

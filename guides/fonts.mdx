@@ -1,0 +1,259 @@
+---
+title: "Rendering text and fonts in Ebitengine"
+description: "How to load TrueType fonts, create font faces with opentype, render text with text/v2, and display debug overlays with ebitenutil.DebugPrint."
+---
+
+Ebitengine provides two ways to render text. The legacy `text` package is straightforward but limited; the newer `text/v2` package (introduced in v2.7) supports richer typography, better performance, and finer layout control. This guide covers both, along with quick debug overlays and font embedding.
+
+## Quick debug text with DebugPrint
+
+The fastest way to put text on screen — useful for frame counters, coordinate displays, or any temporary diagnostic — is `ebitenutil.DebugPrint`. It requires no font loading and renders in a fixed monospace face.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %.0f", ebiten.ActualFPS()))
+}
+```
+
+`DebugPrintAt` lets you specify a position:
+
+```go
+ebitenutil.DebugPrintAt(screen, "Player HP: 100", 10, 40)
+```
+
+<Note>
+  `DebugPrint` always renders in the top-left corner. Use it during development; switch to a proper font face for production UI.
+</Note>
+
+## Loading a TrueType font
+
+To render custom text you need a `font.Face`. Ebitengine works with the standard `golang.org/x/image/font` interface, so any font source compatible with that interface works. The most common path uses `golang.org/x/image/font/opentype`.
+
+<Steps>
+  <Step title="Embed the font file">
+    Use `//go:embed` to bundle the `.ttf` or `.otf` file in your binary.
+
+    ```go
+    import _ "embed"
+
+    //go:embed assets/fonts/NotoSans-Regular.ttf
+    var notoSansRegular []byte
+    ```
+  </Step>
+  <Step title="Parse the font">
+    Pass the raw bytes to `opentype.Parse` to get an `*opentype.Font`.
+
+    ```go
+    import "golang.org/x/image/font/opentype"
+
+    ttFont, err := opentype.Parse(notoSansRegular)
+    if err != nil {
+        log.Fatal(err)
+    }
+    ```
+  </Step>
+  <Step title="Create a font face">
+    Use `opentype.NewFace` with `opentype.FaceOptions` to set the size and DPI.
+
+    ```go
+    const dpi = 72
+
+    face, err := opentype.NewFace(ttFont, &opentype.FaceOptions{
+        Size: 24,
+        DPI:  dpi,
+        Hinting: font.HintingFull,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Create font faces once at startup and store them in your `Game` struct. Creating a new face each frame is expensive and leaks resources.
+</Tip>
+
+## Rendering text with text/v2 (recommended)
+
+The `text/v2` package is the modern API. It introduces `GoTextFace` and `GoTextFaceSource`, which wrap OpenType fonts and provide better shaping and layout than the legacy `text` package.
+
+### Creating a GoTextFaceSource
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/text/v2"
+
+//go:embed assets/fonts/NotoSans-Regular.ttf
+var notoSansRegular []byte
+
+var notoSansSource *text.GoTextFaceSource
+
+func init() {
+    s, err := text.NewGoTextFaceSource(bytes.NewReader(notoSansRegular))
+    if err != nil {
+        log.Fatal(err)
+    }
+    notoSansSource = s
+}
+```
+
+### Drawing text
+
+```go
+func (g *Game) Draw(screen *ebiten.Image) {
+    face := &text.GoTextFace{
+        Source: notoSansSource,
+        Size:   24,
+    }
+
+    op := &text.DrawOptions{}
+    op.GeoM.Translate(50, 100)
+    op.ColorScale.ScaleWithColor(color.White)
+
+    text.Draw(screen, "Hello, Ebitengine!", face, op)
+}
+```
+
+<Note>
+  `text/v2.DrawOptions` embeds `ebiten.DrawImageOptions`, so you can apply any GeoM transform or ColorScale to positioned text.
+</Note>
+
+### Measuring text
+
+Use `text.Measure` to get the bounding box of a string before drawing — essential for centering or wrapping text.
+
+```go
+face := &text.GoTextFace{Source: notoSansSource, Size: 24}
+w, h := text.Measure("Hello!", face, 0)
+
+// Center on screen
+op := &text.DrawOptions{}
+op.GeoM.Translate(
+    float64(screenWidth)/2-w/2,
+    float64(screenHeight)/2-h/2,
+)
+text.Draw(screen, "Hello!", face, op)
+```
+
+## Rendering text with the legacy text package
+
+If you're on Ebitengine v2 before v2.7, or maintaining older code, use the `text` package directly with a `font.Face`.
+
+```go
+import (
+    "image/color"
+    "golang.org/x/image/font"
+    "golang.org/x/image/font/opentype"
+    "github.com/hajimehoshi/ebiten/v2/text"
+)
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    text.Draw(screen, "Score: 1000", g.fontFace, 10, 30, color.White)
+}
+```
+
+`text.Draw` takes the destination image, string, face, x, y coordinates, and color.
+
+<Warning>
+  The legacy `text.Draw` signature places the baseline at `y`, not the top of the text. Add the font's ascent to `y` if you want to align by the top edge: `y + int(face.Metrics().Ascent.Ceil())`.
+</Warning>
+
+## Comparison: text vs text/v2
+
+<Tabs>
+  <Tab title="text/v2 (v2.7+)">
+    ```go
+    import "github.com/hajimehoshi/ebiten/v2/text/v2"
+
+    face := &text.GoTextFace{Source: source, Size: 24}
+    op := &text.DrawOptions{}
+    op.GeoM.Translate(x, y)
+    op.ColorScale.ScaleWithColor(color.White)
+    text.Draw(screen, "Hello!", face, op)
+    ```
+
+    - Better shaping and ligature support
+    - `text.Measure` for layout calculations
+    - Consistent `DrawOptions` API matching `DrawImageOptions`
+    - Supports line spacing and wrapping helpers
+  </Tab>
+  <Tab title="text (legacy)">
+    ```go
+    import "github.com/hajimehoshi/ebiten/v2/text"
+
+    text.Draw(screen, "Hello!", face, x, y, color.White)
+    ```
+
+    - Simpler API for basic use cases
+    - Available in all v2 versions
+    - Limited layout control
+    - Baseline-relative positioning
+  </Tab>
+</Tabs>
+
+## Full example: embedded font with text/v2
+
+```go
+package main
+
+import (
+    "bytes"
+    _ "embed"
+    "image/color"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/text/v2"
+    "golang.org/x/image/font/opentype"
+)
+
+//go:embed assets/fonts/NotoSans-Regular.ttf
+var fontData []byte
+
+var fontSource *text.GoTextFaceSource
+
+func init() {
+    s, err := text.NewGoTextFaceSource(bytes.NewReader(fontData))
+    if err != nil {
+        log.Fatal(err)
+    }
+    fontSource = s
+}
+
+type Game struct{}
+
+func (g *Game) Update() error { return nil }
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{20, 20, 20, 255})
+
+    face := &text.GoTextFace{Source: fontSource, Size: 32}
+
+    w, h := text.Measure("Hello, Ebitengine!", face, 0)
+    op := &text.DrawOptions{}
+    op.GeoM.Translate(
+        float64(screen.Bounds().Dx())/2-w/2,
+        float64(screen.Bounds().Dy())/2-h/2,
+    )
+    op.ColorScale.ScaleWithColor(color.White)
+
+    text.Draw(screen, "Hello, Ebitengine!", face, op)
+}
+
+func (g *Game) Layout(outsideW, outsideH int) (int, int) {
+    return 640, 480
+}
+
+func main() {
+    ebiten.SetWindowTitle("Font example")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+<Tip>
+  For CJK or other complex scripts, use a font that includes those glyphs (such as Noto Sans CJK) and `text/v2`, which handles multi-script shaping correctly.
+</Tip>

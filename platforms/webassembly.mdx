@@ -1,0 +1,169 @@
+---
+title: "Compile Ebitengine games to WebAssembly"
+description: "Build Ebitengine games to WebAssembly, serve them in a browser, and handle web-specific considerations like audio activation and file size."
+---
+
+Ebitengine supports WebAssembly as a first-class target. Games compile to a single `.wasm` binary that runs in any modern browser using Go's standard `GOOS=js GOARCH=wasm` build target. You provide a small HTML page and the `wasm_exec.js` glue script from your Go installation, and the game runs in a `<canvas>` element.
+
+## Build and serve workflow
+
+<Steps>
+  <Step title="Compile the game to WebAssembly">
+    Set `GOOS=js` and `GOARCH=wasm`, then build as usual:
+
+    ```bash
+    GOOS=js GOARCH=wasm go build -o game.wasm .
+    ```
+
+    The output `game.wasm` contains your entire game including all Go standard library dependencies.
+  </Step>
+  <Step title="Copy the wasm_exec.js glue script">
+    Go ships a JavaScript runtime glue file that bridges the WASM binary to the browser's JS environment. Copy it from your Go installation:
+
+    ```bash
+    cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" .
+    ```
+
+    <Warning>
+      `wasm_exec.js` is version-specific. Always copy it from the same Go version used to compile `game.wasm`. Mismatched versions cause runtime errors.
+    </Warning>
+  </Step>
+  <Step title="Create the HTML host page">
+    Create an `index.html` that loads the glue script and instantiates the WASM module:
+
+    ```html
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>My Ebitengine Game</title>
+      <style>
+        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { display: block; }
+      </style>
+    </head>
+    <body>
+      <script src="wasm_exec.js"></script>
+      <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("game.wasm"), go.importObject)
+          .then(result => go.run(result.instance));
+      </script>
+    </body>
+    </html>
+    ```
+
+    Ebitengine automatically creates and manages the `<canvas>` element when running under WASM.
+  </Step>
+  <Step title="Serve the files locally">
+    Browsers block `fetch()` requests from `file://` URLs. You must serve the files over HTTP.
+
+    <Tabs>
+      <Tab title="Go HTTP server">
+        Create a minimal server file:
+
+        ```go
+        // serve.go (build tag excludes it from the game build)
+        //go:build ignore
+
+        package main
+
+        import (
+            "log"
+            "net/http"
+        )
+
+        func main() {
+            log.Println("Serving on http://localhost:8080")
+            log.Fatal(http.ListenAndServe(":8080", http.FileServer(http.Dir("."))))
+        }
+        ```
+
+        Run it:
+
+        ```bash
+        go run serve.go
+        ```
+      </Tab>
+      <Tab title="npx serve">
+        ```bash
+        npx serve .
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```bash
+        python3 -m http.server 8080
+        ```
+      </Tab>
+    </Tabs>
+
+    Open `http://localhost:8080` in your browser.
+  </Step>
+</Steps>
+
+## Audio on the web
+
+Browsers require a user interaction (a click, tap, or key press) before allowing audio playback. Ebitengine handles this automatically: audio is silenced until the user interacts with the page for the first time.
+
+<Note>
+  If your game starts audio immediately in `Update`, it will remain silent until the user clicks or taps the canvas. Consider displaying a "Click to start" prompt on the first frame to set the correct expectation.
+</Note>
+
+```go
+var started bool
+
+func (g *Game) Update() error {
+    if !started {
+        if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
+            len(inpututil.AppendJustPressedTouchIDs(nil)) > 0 {
+            started = true
+            startBackgroundMusic()
+        }
+    }
+    return nil
+}
+```
+
+## File size considerations
+
+Go WASM binaries are large by default because the entire Go runtime is included. A minimal game typically produces a 10–20 MB `.wasm` file.
+
+To reduce size, use the `-ldflags` trimpath options and strip debug info:
+
+```bash
+GOOS=js GOARCH=wasm go build \
+  -ldflags="-s -w" \
+  -trimpath \
+  -o game.wasm .
+```
+
+Then compress with gzip or Brotli at the server level. Most web servers and CDNs support serving pre-compressed `.wasm.gz` files. A 15 MB binary often compresses to 4–6 MB.
+
+<Tip>
+  Serve `game.wasm` with the `Content-Encoding: gzip` header and a pre-compressed `game.wasm.gz` file. Browsers that support `WebAssembly.instantiateStreaming` will decompress on the fly.
+</Tip>
+
+## JavaScript interop
+
+For advanced use cases—such as reading from `localStorage`, calling browser APIs, or posting scores to a leaderboard—use the `syscall/js` package from the Go standard library:
+
+```go
+//go:build js
+
+package main
+
+import "syscall/js"
+
+func getLocalStorageItem(key string) string {
+    localStorage := js.Global().Get("localStorage")
+    val := localStorage.Call("getItem", key)
+    if val.IsNull() || val.IsUndefined() {
+        return ""
+    }
+    return val.String()
+}
+```
+
+<Warning>
+  Guard all `syscall/js` code with the `//go:build js` build constraint. It will not compile on non-WASM targets.
+</Warning>

@@ -1,0 +1,104 @@
+---
+title: "Ebitengine: Open Source 2D Game Engine for Go"
+description: "Ebitengine is a dead simple, open source 2D game engine for Go. Build cross-platform games targeting desktop, mobile, and the web from one codebase."
+---
+
+Ebitengine (formerly Ebiten) is an open source 2D game engine for the Go programming language. Its API is intentionally minimal: you implement a single `Game` interface with three methods, call `ebiten.RunGame`, and Ebitengine handles windowing, rendering, input, and audio across every supported platform.
+
+<CardGroup cols={2}>
+  <Card title="Install Ebitengine" icon="download" href="/installation">
+    Set up Go, install the package, and configure platform dependencies.
+  </Card>
+  <Card title="Hello, World!" icon="rocket" href="/hello-world">
+    Open your first window and paint it a solid color in under 30 lines of Go.
+  </Card>
+  <Card title="Game loop" icon="arrow-rotate-right" href="/concepts/game-loop">
+    Understand how Update, Draw, and Layout work together every tick.
+  </Card>
+  <Card title="Examples" icon="gamepad" href="/examples/overview">
+    Browse working demos from simple sprites to complete 2D games.
+  </Card>
+</CardGroup>
+
+## Key features
+
+Ebitengine is designed to be the smallest useful surface area for 2D game development in Go.
+
+- **Single interface** — implement `Update`, `Draw`, and `Layout`. That is the entire contract between your game and the engine.
+- **Cross-platform rendering** — uses Metal on macOS/iOS, DirectX 11 on Windows, and OpenGL/WebGL on Linux, Android, and WebAssembly. Your code does not change.
+- **Hardware acceleration** — all drawing operations are GPU-accelerated. Images are stored as textures and composed with a geometry matrix.
+- **Built-in audio** — the `github.com/hajimehoshi/ebiten/v2/audio` package streams PCM audio and supports MP3, Ogg Vorbis, WAV, and FLAC via companion packages.
+- **Unified input** — keyboard, mouse, gamepad (including Xbox and PlayStation controllers via the standard Gamepad API), and touch are all handled through a single consistent API.
+- **Kage shaders** — write custom GPU shaders in Kage, a Go-like shading language that compiles to the correct backend shader language per platform.
+- **Pure Go on most platforms** — no CGo is required for Windows, macOS (arm64), and WebAssembly builds. Linux requires a few system libraries but no CGo in your own code.
+- **Go modules native** — `go get github.com/hajimehoshi/ebiten/v2` is all you need to add the engine to any module.
+
+## Supported platforms
+
+| Platform | Architectures | Notes |
+|---|---|---|
+| Windows | amd64, arm64 | DirectX 11; no extra dependencies |
+| macOS | amd64, arm64 | Metal; requires Xcode command line tools |
+| Linux | amd64, arm64 | OpenGL; requires system libraries (see [Installation](/installation)) |
+| iOS | arm64 | Metal; built with `gomobile` |
+| Android | arm, arm64 | OpenGL ES; built with `gomobile` |
+| WebAssembly | wasm | WebGL via `GOARCH=wasm GOOS=js` |
+| Nintendo Switch | — | Available under NDA via separate package |
+
+## The Game interface
+
+Every Ebitengine game implements the `ebiten.Game` interface:
+
+```go
+type Game interface {
+    // Update is called once per logical tick (default 60 TPS).
+    // Game logic — input handling, physics, AI — goes here.
+    // Return a non-nil error to stop the game loop.
+    Update() error
+
+    // Draw is called once per frame to render the current game state.
+    // screen is a fresh *ebiten.Image each frame; draw everything you
+    // want to show onto it.
+    Draw(screen *ebiten.Image)
+
+    // Layout takes the outer (OS window) size and returns the logical
+    // screen size your game uses. Ebitengine scales automatically.
+    Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int)
+}
+```
+
+`Update` and `Draw` are intentionally separate. `Update` runs at a fixed tick rate (60 TPS by default) and is where all mutable state changes happen. `Draw` runs at the display refresh rate and should be a pure read of game state — no writes. This separation makes games deterministic and simplifies debugging.
+
+<Tip>
+  You can change the tick rate with `ebiten.SetTPS(n)`. Use `ebiten.ActualTPS()` and `ebiten.ActualFPS()` at runtime to observe what your game is achieving.
+</Tip>
+
+## Minimal working program
+
+The shortest possible Ebitengine program that opens a window:
+
+```go main.go
+package main
+
+import (
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+)
+
+type Game struct{}
+
+func (g *Game) Update() error                         { return nil }
+func (g *Game) Draw(screen *ebiten.Image)             {}
+func (g *Game) Layout(ow, oh int) (int, int)          { return 640, 480 }
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Hello")
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+From here, see [Hello, World!](/hello-world) for a version that actually draws something, or [Your first game](/your-first-game) to build a moving sprite with keyboard input.

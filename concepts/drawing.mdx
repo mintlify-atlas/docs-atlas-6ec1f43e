@@ -1,0 +1,248 @@
+---
+title: "Drawing images and shapes in Ebitengine"
+description: "A practical guide to Ebitengine's drawing API: images, geometry transforms, color tinting, rectangles, vector shapes, and blend modes."
+---
+
+All rendering in Ebitengine happens through `*ebiten.Image` — a GPU-backed image that can serve as both a source and a destination for drawing operations. The `screen` passed to your `Draw` method is itself an `*ebiten.Image`, and you compose your scene by drawing other images onto it.
+
+## ebiten.Image
+
+Create an off-screen image to use as a sprite sheet, render target, or canvas:
+
+```go
+// Allocate a new blank image (RGBA, GPU-backed)
+img := ebiten.NewImage(64, 64)
+
+// Create from a decoded image.Image (e.g., loaded from a PNG)
+ebitenImg := ebiten.NewImageFromImage(goImg)
+
+// Query dimensions
+w, h := img.Bounds().Dx(), img.Bounds().Dy()
+```
+
+<Note>
+`ebiten.NewImage` allocates GPU memory. Create images during initialization, not inside `Draw`, to avoid per-frame allocation overhead.
+</Note>
+
+## Drawing an image
+
+Use `screen.DrawImage(src, opts)` to draw one image onto another:
+
+```go
+func (g *Game) Draw(screen *ebiten.Image) {
+    op := &ebiten.DrawImageOptions{}
+    op.GeoM.Translate(100, 50) // position at (100, 50)
+    screen.DrawImage(g.sprite, op)
+}
+```
+
+`DrawImageOptions` carries two main fields: a **geometry matrix** for spatial transforms and a **color scale** for tinting.
+
+## Geometry matrix (GeoM)
+
+`GeoM` is a 3×2 affine matrix applied to every pixel coordinate of the source image. Operations compose left-to-right.
+
+<Tabs>
+  <Tab title="Translation">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    op.GeoM.Translate(200, 150)
+    screen.DrawImage(sprite, op)
+    ```
+  </Tab>
+  <Tab title="Scaling">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    op.GeoM.Scale(2.0, 2.0) // double size
+    screen.DrawImage(sprite, op)
+    ```
+  </Tab>
+  <Tab title="Rotation">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    // Rotate around the sprite's center
+    w, h := sprite.Bounds().Dx(), sprite.Bounds().Dy()
+    op.GeoM.Translate(-float64(w)/2, -float64(h)/2)
+    op.GeoM.Rotate(math.Pi / 4) // 45 degrees
+    op.GeoM.Translate(screenCX, screenCY)
+    screen.DrawImage(sprite, op)
+    ```
+  </Tab>
+  <Tab title="Combined">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    w, h := sprite.Bounds().Dx(), sprite.Bounds().Dy()
+    // Scale, then rotate around center, then place on screen
+    op.GeoM.Scale(1.5, 1.5)
+    op.GeoM.Translate(-float64(w)*1.5/2, -float64(h)*1.5/2)
+    op.GeoM.Rotate(angle)
+    op.GeoM.Translate(x, y)
+    screen.DrawImage(sprite, op)
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+Always apply scale and rotate **before** translate. Rotation is always around the origin (0, 0), so shift the image to the origin first, rotate, then move it to its final position.
+</Tip>
+
+## Color scale and tinting
+
+`ColorScale` multiplies each channel of every source pixel. Use it for transparency, tinting, and flash effects.
+
+```go
+op := &ebiten.DrawImageOptions{}
+
+// 50% transparent
+op.ColorScale.Scale(1, 1, 1, 0.5)
+
+// Red tint
+op.ColorScale.Scale(1, 0.3, 0.3, 1)
+
+// Fully white (useful for silhouettes or damage flash)
+op.ColorScale.ScaleWithColor(color.White)
+```
+
+<Info>
+`ColorScale` replaced the deprecated `ColorM` in Ebitengine v2.5. Prefer `ColorScale` for all new code.
+</Info>
+
+## Drawing filled rectangles
+
+Use `ebitenutil.DrawRect` for quick solid-color rectangles without creating an intermediate image:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    // DrawRect(dst, x, y, width, height, color)
+    ebitenutil.DrawRect(screen, 10, 10, 200, 40, color.RGBA{0xff, 0x00, 0x00, 0xff})
+}
+```
+
+For filled rectangles with full control, you can also fill a small image and scale it:
+
+```go
+pixel := ebiten.NewImage(1, 1)
+pixel.Fill(color.White)
+
+op := &ebiten.DrawImageOptions{}
+op.GeoM.Scale(200, 40)
+op.GeoM.Translate(10, 10)
+screen.DrawImage(pixel, op)
+```
+
+## Lines and vector shapes
+
+The `vector` sub-package provides anti-aliased lines, circles, and arbitrary filled paths:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/vector"
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    // Stroke a line
+    vector.StrokeLine(screen, 0, 0, 200, 150, 2, color.White, true)
+
+    // Filled circle
+    vector.DrawFilledCircle(screen, 320, 240, 40, color.RGBA{0, 200, 255, 255}, true)
+
+    // Filled rectangle (anti-aliased)
+    vector.DrawFilledRect(screen, 50, 50, 120, 80, color.RGBA{255, 165, 0, 255}, true)
+
+    // Custom path
+    var path vector.Path
+    path.MoveTo(100, 200)
+    path.LineTo(150, 100)
+    path.LineTo(200, 200)
+    path.Close()
+
+    vs, is := path.AppendVerticesAndIndicesForFilling(nil, nil)
+    screen.DrawTriangles(vs, is, whiteImage, &ebiten.DrawTrianglesOptions{})
+}
+```
+
+## Blend modes
+
+Blend modes control how source pixels combine with destination pixels. Set `DrawImageOptions.Blend`:
+
+<AccordionGroup>
+  <Accordion title="Default (source over)">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    // Blend field defaults to ebiten.BlendSourceOver
+    screen.DrawImage(sprite, op)
+    ```
+    Standard alpha compositing: source alpha controls transparency over the destination.
+  </Accordion>
+  <Accordion title="Additive blending (glow effects)">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    op.Blend = ebiten.BlendLighter // additive
+    screen.DrawImage(glowSprite, op)
+    ```
+    Source pixels are added to destination pixels, creating bright glow and light effects.
+  </Accordion>
+  <Accordion title="Copy (no blending)">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    op.Blend = ebiten.BlendCopy
+    screen.DrawImage(backgroundLayer, op)
+    ```
+    Source pixels completely replace destination pixels, ignoring alpha.
+  </Accordion>
+  <Accordion title="Multiply">
+    ```go
+    op := &ebiten.DrawImageOptions{}
+    op.Blend = ebiten.BlendMultiply
+    screen.DrawImage(shadowOverlay, op)
+    ```
+    Darkens by multiplying source and destination channels. Useful for shadows and overlays.
+  </Accordion>
+</AccordionGroup>
+
+## Sub-images
+
+Draw a region of a larger image (e.g., a sprite sheet) using `SubImage`:
+
+```go
+import "image"
+
+// Cut a 32×32 tile at column 2, row 1 from a 256×256 atlas
+rect := image.Rect(2*32, 1*32, 3*32, 2*32)
+tile := spriteSheet.SubImage(rect).(*ebiten.Image)
+
+op := &ebiten.DrawImageOptions{}
+op.GeoM.Translate(float64(tileX), float64(tileY))
+screen.DrawImage(tile, op)
+```
+
+<Tip>
+`SubImage` does not copy pixel data — it returns a view into the same GPU texture. This is efficient and safe to call every frame.
+</Tip>
+
+## Off-screen rendering
+
+Draw to an off-screen image to composite layered scenes or apply post-processing:
+
+```go
+type Game struct {
+    offscreen *ebiten.Image
+}
+
+func NewGame() *Game {
+    return &Game{
+        offscreen: ebiten.NewImage(320, 240),
+    }
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    // Render scene to off-screen buffer
+    g.offscreen.Clear()
+    // ... draw scene elements to g.offscreen ...
+
+    // Scale up to the screen
+    op := &ebiten.DrawImageOptions{}
+    op.GeoM.Scale(2, 2)
+    screen.DrawImage(g.offscreen, op)
+}
+```

@@ -1,0 +1,259 @@
+---
+title: "Migrate from Ebiten v1 to Ebitengine v2"
+description: "Step-by-step migration guide for porting Ebiten v1 to Ebitengine v2: new import paths, the Game interface, removed APIs, and ColorM changes."
+keywords: ['ebitengine', 'ebiten', 'migration', 'v1 to v2', 'breaking changes', 'upgrade', 'porting']
+---
+
+Ebitengine v2 is a clean break from v1. The import path changed, the game loop moved to an interface, and all symbols that had been deprecated during the v1 cycle were removed. Most projects can be migrated mechanically in an afternoon. This guide walks through every breaking change in order of impact, with before-and-after code examples for each.
+
+<Warning>
+  v2 will not compile alongside v1 in the same module. Update all Ebitengine import paths at once rather than incrementally.
+</Warning>
+
+## Prerequisites
+
+- Go 1.18 or later (Go modules required)
+- A project that builds cleanly against `github.com/hajimehoshi/ebiten` v1.12.x
+
+---
+
+<Steps>
+
+  <Step title="Update the module dependency">
+
+    Remove the v1 dependency and add v2:
+
+    ```bash
+    go get github.com/hajimehoshi/ebiten/v2@latest
+    ```
+
+    Then tidy:
+
+    ```bash
+    go mod tidy
+    ```
+
+  </Step>
+
+  <Step title="Update all import paths">
+
+    Every import of `github.com/hajimehoshi/ebiten` must gain a `/v2` suffix. The sub-packages follow the same pattern.
+
+    ```diff
+    - import "github.com/hajimehoshi/ebiten"
+    - import "github.com/hajimehoshi/ebiten/audio"
+    - import "github.com/hajimehoshi/ebiten/ebitenutil"
+    - import "github.com/hajimehoshi/ebiten/inpututil"
+    - import "github.com/hajimehoshi/ebiten/text"
+    + import "github.com/hajimehoshi/ebiten/v2"
+    + import "github.com/hajimehoshi/ebiten/v2/audio"
+    + import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    + import "github.com/hajimehoshi/ebiten/v2/inpututil"
+    + import "github.com/hajimehoshi/ebiten/v2/text"
+    ```
+
+    You can update all occurrences at once with `sed` or your editor's find-and-replace. On macOS/Linux:
+
+    ```bash
+    find . -name '*.go' -exec sed -i \
+      's|github.com/hajimehoshi/ebiten"|github.com/hajimehoshi/ebiten/v2"|g' {} +
+    find . -name '*.go' -exec sed -i \
+      's|github.com/hajimehoshi/ebiten/|github.com/hajimehoshi/ebiten/v2/|g' {} +
+    ```
+
+    <Note>
+      If your project uses the `ebiten` package alias, the alias itself does not need to change — only the import path string.
+    </Note>
+
+  </Step>
+
+  <Step title="Replace ebiten.Run with ebiten.RunGame and the Game interface">
+
+    v1 used standalone `Update` and `Draw` functions passed to `ebiten.Run`. v2 requires implementing the `ebiten.Game` interface and passing a value to `ebiten.RunGame`.
+
+    **v1 pattern:**
+
+    ```go
+    func update(screen *ebiten.Image) error {
+        if ebiten.IsDrawingSkipped() {
+            return nil
+        }
+        // draw here
+        return nil
+    }
+
+    func main() {
+        if err := ebiten.Run(update, 640, 480, 1, "My Game"); err != nil {
+            log.Fatal(err)
+        }
+    }
+    ```
+
+    **v2 pattern:**
+
+    ```go
+    type Game struct{}
+
+    func (g *Game) Update() error {
+        // update logic here (no drawing)
+        return nil
+    }
+
+    func (g *Game) Draw(screen *ebiten.Image) {
+        // draw here — always called, no IsDrawingSkipped check needed
+    }
+
+    func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+        return 640, 480
+    }
+
+    func main() {
+        ebiten.SetWindowSize(640, 480)
+        ebiten.SetWindowTitle("My Game")
+        if err := ebiten.RunGame(&Game{}); err != nil {
+            log.Fatal(err)
+        }
+    }
+    ```
+
+    <Warning>
+      `ebiten.IsDrawingSkipped` no longer exists. `Draw` is always called every frame. Move all non-drawing logic into `Update`.
+    </Warning>
+
+  </Step>
+
+  <Step title="Remove ebiten.IsDrawingSkipped">
+
+    Any guard block that returns early when drawing is skipped must be deleted entirely.
+
+    ```diff
+    - func update(screen *ebiten.Image) error {
+    -     if ebiten.IsDrawingSkipped() {
+    -         return nil
+    -     }
+    -     drawEverything(screen)
+    -     return nil
+    - }
+    + func (g *Game) Draw(screen *ebiten.Image) {
+    +     drawEverything(screen)
+    + }
+    ```
+
+  </Step>
+
+  <Step title="Update DrawImage calls">
+
+    `(*ebiten.Image).DrawImage` now takes `*ebiten.DrawImageOptions` (a pointer) instead of a struct value. Passing `nil` is valid and means "use defaults".
+
+    ```diff
+    - op := ebiten.DrawImageOptions{}
+    - op.GeoM.Translate(x, y)
+    - screen.DrawImage(sprite, op)
+    + op := &ebiten.DrawImageOptions{}
+    + op.GeoM.Translate(x, y)
+    + screen.DrawImage(sprite, op)
+    ```
+
+    If you were passing a zero-value struct to use defaults, pass `nil` instead:
+
+    ```diff
+    - screen.DrawImage(sprite, ebiten.DrawImageOptions{})
+    + screen.DrawImage(sprite, nil)
+    ```
+
+  </Step>
+
+  <Step title="Migrate ColorM usage">
+
+    `ebiten.ColorM` still exists in v2 and is set via `DrawImageOptions.ColorM`. However, for the common cases of scaling alpha or brightness, the new `ebiten.ColorScale` type is simpler and has less overhead.
+
+    **Alpha scaling:**
+
+    ```diff
+    - var op ebiten.DrawImageOptions
+    - op.ColorM.Scale(1, 1, 1, 0.5)
+    + var op ebiten.DrawImageOptions
+    + op.ColorScale.ScaleAlpha(0.5)
+    ```
+
+    **Tinting (multiply all channels):**
+
+    ```diff
+    - var op ebiten.DrawImageOptions
+    - op.ColorM.Scale(r, g, b, a)
+    + var op ebiten.DrawImageOptions
+    + op.ColorScale.Scale(r, g, b, a)
+    ```
+
+    Full matrix operations (rotation in color space, brightness/contrast, hue shift) continue to use `ColorM` as before.
+
+    <Note>
+      `ColorScale` and `ColorM` can be used together. `ColorScale` is applied first, then `ColorM`.
+    </Note>
+
+  </Step>
+
+  <Step title="Update window configuration calls">
+
+    `ebiten.Run` accepted window size and title as arguments. In v2 these are set via separate calls before `ebiten.RunGame`.
+
+    ```diff
+    - ebiten.Run(update, 640, 480, 2, "My Game")
+    + ebiten.SetWindowSize(1280, 960) // physical pixels (scale factor handled by Layout)
+    + ebiten.SetWindowTitle("My Game")
+    + ebiten.RunGame(&Game{})
+    ```
+
+    The scale factor argument is removed. The `Layout` method returns the logical (game) resolution; the engine scales to fit the window automatically.
+
+  </Step>
+
+  <Step title="Remove other deleted APIs">
+
+    The following v1 symbols do not exist in v2. Replace them with their v2 equivalents:
+
+    | Removed (v1) | Replacement (v2) |
+    |---|---|
+    | `ebiten.Run` | `ebiten.RunGame` |
+    | `ebiten.IsDrawingSkipped` | _(no replacement — Draw is always called)_ |
+    | `ebiten.Image.Size()` returning two `int` | `ebiten.Image.Bounds().Dx()` / `.Dy()` |
+    | `ebiten.NewImage(w, h, filter)` | `ebiten.NewImage(w, h)` (filter removed) |
+    | `ebiten.NewImageFromImage(img, filter)` | `ebiten.NewImageFromImage(img)` |
+    | `ebiten.Filter` constants (`FilterNearest`, etc.) | Removed; bilinear filtering is the default |
+    | `ebiten.CompositeMode` passed to `DrawImageOptions` | `ebiten.Blend` field on `DrawImageOptions` |
+
+  </Step>
+
+  <Step title="Build and test">
+
+    ```bash
+    go build ./...
+    go test ./...
+    ```
+
+    The compiler will surface any remaining references to removed symbols. Address them one by one using the table in the previous step as a reference.
+
+    <Tip>
+      Run `go vet ./...` after the build passes. Ebitengine v2 includes additional vet checks that catch common misuse of the drawing API.
+    </Tip>
+
+  </Step>
+
+</Steps>
+
+---
+
+## Summary of breaking changes
+
+| Area | v1 | v2 |
+|---|---|---|
+| Import path | `github.com/hajimehoshi/ebiten` | `github.com/hajimehoshi/ebiten/v2` |
+| Entry point | `ebiten.Run(update, w, h, scale, title)` | `ebiten.RunGame(&Game{})` |
+| Game loop | Single `update(*ebiten.Image) error` | `Game` interface: `Update`, `Draw`, `Layout` |
+| Draw guard | `ebiten.IsDrawingSkipped()` | _(removed; Draw always runs)_ |
+| DrawImage arg | struct value `DrawImageOptions` | pointer `*DrawImageOptions` |
+| Image creation | `NewImage(w, h, filter)` | `NewImage(w, h)` |
+| Color scaling | `ColorM.Scale(...)` | `ColorScale.Scale(...)` or keep `ColorM` |
+| Blend modes | `CompositeMode` constants | `Blend` struct field |
+
+For a detailed description of new features added across v2.x minor releases, see the [v2 release notes](/releases/v2).

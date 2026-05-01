@@ -1,0 +1,302 @@
+---
+title: "Build your first game with Ebitengine"
+description: "Build a moving square game in Go with Ebitengine. Add game state, keyboard input, rectangle drawing, and boundary collision step by step."
+---
+
+This guide builds a small but complete game: a colored square the player moves around the screen with the arrow keys. It bounces off the window edges when no key is held and stops at the boundary when one is. By the end you will have touched every fundamental Ebitengine concept — game state, input, drawing, and collision detection.
+
+## What you will build
+
+- A square that moves around a 640×480 screen
+- Arrow key input to control direction and speed
+- Boundary detection that keeps the square on screen
+- A velocity-based movement model (position changes each tick)
+
+<Steps>
+  <Step title="Set up the project">
+    Create a directory with a Go module if you haven't already:
+
+    ```bash
+    mkdir mover
+    cd mover
+    go mod init example.com/mover
+    go get github.com/hajimehoshi/ebiten/v2
+    ```
+
+    Create `main.go` with the package declaration and imports you'll need:
+
+    ```go main.go
+    package main
+
+    import (
+        "image/color"
+        "log"
+
+        "github.com/hajimehoshi/ebiten/v2"
+        "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+        "github.com/hajimehoshi/ebiten/v2/vector"
+    )
+    ```
+
+    The `vector` package provides `DrawFilledRect`, which is the simplest way to draw a solid rectangle. `ebitenutil` gives you `DebugPrint` for on-screen text.
+  </Step>
+
+  <Step title="Define game state">
+    Add the `Game` struct with fields for the square's position, velocity, and size:
+
+    ```go main.go
+    const (
+        screenWidth  = 640
+        screenHeight = 480
+        squareSize   = 32
+        speed        = 3.0
+    )
+
+    type Game struct {
+        x, y   float32 // top-left corner of the square
+        vx, vy float32 // velocity in pixels per tick
+    }
+    ```
+
+    Using `float32` for position and velocity lets movement feel smooth even when the speed is not a whole number. Ebitengine's drawing functions accept `float32` coordinates directly.
+
+    <Tip>
+      Constants like `screenWidth` and `squareSize` make it easy to adjust your game later without hunting through the code for magic numbers.
+    </Tip>
+  </Step>
+
+  <Step title="Handle keyboard input in Update">
+    `Update` runs 60 times per second. Read the keys and adjust velocity accordingly, then apply the velocity to the position:
+
+    ```go main.go
+    func (g *Game) Update() error {
+        // Close the game on Escape
+        if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+            return ebiten.Termination
+        }
+
+        // Reset velocity each tick so the square stops when no key is held
+        g.vx = 0
+        g.vy = 0
+
+        if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+            g.vx = -speed
+        }
+        if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+            g.vx = speed
+        }
+        if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+            g.vy = -speed
+        }
+        if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+            g.vy = speed
+        }
+
+        // Apply velocity
+        g.x += g.vx
+        g.y += g.vy
+
+        // Boundary collision: clamp position so the square stays on screen
+        if g.x < 0 {
+            g.x = 0
+        }
+        if g.y < 0 {
+            g.y = 0
+        }
+        if g.x > screenWidth-squareSize {
+            g.x = screenWidth - squareSize
+        }
+        if g.y > screenHeight-squareSize {
+            g.y = screenHeight - squareSize
+        }
+
+        return nil
+    }
+    ```
+
+    Setting velocity to zero at the start of each tick means movement only happens while a key is actively held. The boundary clamps at the end ensure the square never moves off screen.
+
+    <Note>
+      `ebiten.IsKeyPressed` is true for every tick the key is down. If you want to detect a single key press (not a hold), use `inpututil.IsKeyJustPressed` from `github.com/hajimehoshi/ebiten/v2/inpututil` instead.
+    </Note>
+  </Step>
+
+  <Step title="Draw the square">
+    `Draw` reads the current position from game state and renders the square:
+
+    ```go main.go
+    func (g *Game) Draw(screen *ebiten.Image) {
+        // Dark background
+        screen.Fill(color.RGBA{R: 0x1a, G: 0x1a, B: 0x2e, A: 0xff})
+
+        // Draw the player square
+        vector.DrawFilledRect(
+            screen,
+            g.x, g.y,
+            squareSize, squareSize,
+            color.RGBA{R: 0xe0, G: 0x60, B: 0x20, A: 0xff},
+            false,
+        )
+
+        // Debug overlay: show current position
+        ebitenutil.DebugPrint(screen, fmt.Sprintf("x=%.0f y=%.0f", g.x, g.y))
+    }
+    ```
+
+    Add `"fmt"` to your import block for `fmt.Sprintf`.
+
+    `vector.DrawFilledRect` takes the target image, top-left x/y, width, height, fill color, and a boolean for anti-aliasing. Passing `false` for anti-aliasing keeps edges crisp on pixel art.
+  </Step>
+
+  <Step title="Wire up Layout and main">
+    Return the fixed logical resolution from `Layout` and start the game loop from `main`:
+
+    ```go main.go
+    func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+        return screenWidth, screenHeight
+    }
+
+    func main() {
+        game := &Game{
+            x: screenWidth/2 - squareSize/2,
+            y: screenHeight/2 - squareSize/2,
+        }
+
+        ebiten.SetWindowSize(screenWidth, screenHeight)
+        ebiten.SetWindowTitle("Mover")
+
+        if err := ebiten.RunGame(game); err != nil {
+            log.Fatal(err)
+        }
+    }
+    ```
+
+    Initializing `x` and `y` to the center of the screen means the square starts in the middle rather than the top-left corner.
+  </Step>
+
+  <Step title="Run the game">
+    ```bash
+    go run .
+    ```
+
+    Use the arrow keys to move the orange square. It stops at each edge of the window. Press `Escape` to quit.
+  </Step>
+</Steps>
+
+## Complete program
+
+Here is the entire `main.go` in one block for reference:
+
+```go main.go
+package main
+
+import (
+    "fmt"
+    "image/color"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    "github.com/hajimehoshi/ebiten/v2/vector"
+)
+
+const (
+    screenWidth  = 640
+    screenHeight = 480
+    squareSize   = 32
+    speed        = 3.0
+)
+
+type Game struct {
+    x, y   float32
+    vx, vy float32
+}
+
+func (g *Game) Update() error {
+    if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+        return ebiten.Termination
+    }
+
+    g.vx = 0
+    g.vy = 0
+
+    if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+        g.vx = -speed
+    }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+        g.vx = speed
+    }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+        g.vy = -speed
+    }
+    if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+        g.vy = speed
+    }
+
+    g.x += g.vx
+    g.y += g.vy
+
+    if g.x < 0 {
+        g.x = 0
+    }
+    if g.y < 0 {
+        g.y = 0
+    }
+    if g.x > screenWidth-squareSize {
+        g.x = screenWidth - squareSize
+    }
+    if g.y > screenHeight-squareSize {
+        g.y = screenHeight - squareSize
+    }
+
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.Fill(color.RGBA{R: 0x1a, G: 0x1a, B: 0x2e, A: 0xff})
+
+    vector.DrawFilledRect(
+        screen,
+        g.x, g.y,
+        squareSize, squareSize,
+        color.RGBA{R: 0xe0, G: 0x60, B: 0x20, A: 0xff},
+        false,
+    )
+
+    ebitenutil.DebugPrint(screen, fmt.Sprintf("x=%.0f y=%.0f", g.x, g.y))
+}
+
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+    return screenWidth, screenHeight
+}
+
+func main() {
+    game := &Game{
+        x: screenWidth/2 - squareSize/2,
+        y: screenHeight/2 - squareSize/2,
+    }
+
+    ebiten.SetWindowSize(screenWidth, screenHeight)
+    ebiten.SetWindowTitle("Mover")
+
+    if err := ebiten.RunGame(game); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+## What to try next
+
+- **Add diagonal movement** — the velocity components already compose correctly; hold two arrow keys at once and observe.
+- **Use a sprite** — replace `vector.DrawFilledRect` with `screen.DrawImage` to render a PNG loaded with `ebitenutil.NewImageFromFile`.
+- **Add a second object** — introduce a target square at a random position and check whether the player rectangle overlaps it (AABB collision: `g.x < tx+size && g.x+size > tx && g.y < ty+size && g.y+size > ty`).
+- **Keep score** — increment a counter on collision, reset the target to a new random position, and display the score with `ebitenutil.DebugPrint`.
+
+<CardGroup cols={2}>
+  <Card title="Drawing" icon="paintbrush" href="/concepts/drawing">
+    Images, geometry matrices, color scaling, and the draw options API.
+  </Card>
+  <Card title="Input" icon="keyboard" href="/concepts/input">
+    Keyboard, mouse, gamepad, and touch input in depth.
+  </Card>
+</CardGroup>

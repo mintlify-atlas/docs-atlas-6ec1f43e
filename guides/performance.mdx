@@ -1,0 +1,251 @@
+---
+title: "Performance tips for Ebitengine games"
+description: "Practical techniques for keeping your Ebitengine game fast: image caching, batching draw calls, reducing allocations, and profiling with pprof."
+---
+
+Writing a game that runs smoothly requires understanding how Ebitengine schedules updates and renders frames, and where the common bottlenecks lie. Most performance problems in Ebitengine games come down to a small set of patterns: creating images each frame, issuing too many individual draw calls, or relying on expensive color transformations. The tips below address each of these areas with concrete guidance.
+
+## Understand TPS and FPS
+
+Ebitengine separates logic updates from rendering. `Update` runs at a fixed 60 TPS (ticks per second) by default, while `Draw` is called as often as the display allows. Heavy work in `Draw` reduces visible frame rate; heavy work in `Update` causes the game to feel sluggish even if it renders quickly.
+
+<Tip>
+  Move all game logic to `Update`. Keep `Draw` focused purely on rendering — avoid calculations, allocations, or file I/O inside it.
+</Tip>
+
+Use `ebiten.SetTPS` to change the tick rate, and `ebiten.ActualTPS()` / `ebiten.ActualFPS()` to read current performance at runtime.
+
+```go
+func (g *Game) Update() error {
+    // All game logic here — physics, input, AI
+    g.player.Update()
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    // Only rendering here — no logic, no allocations
+    screen.DrawImage(g.playerSprite, g.playerOpts)
+}
+```
+
+## Cache images — never allocate in hot paths
+
+`ebiten.NewImage` uploads a texture to the GPU. Calling it every frame is expensive and causes GC pressure.
+
+<Warning>
+  Never call `ebiten.NewImage` inside `Update` or `Draw`. Create images once during initialization and reuse them.
+</Warning>
+
+```go
+// Bad: allocates a new GPU texture every frame
+func (g *Game) Draw(screen *ebiten.Image) {
+    tmp := ebiten.NewImage(64, 64)
+    tmp.Fill(color.RGBA{255, 0, 0, 255})
+    screen.DrawImage(tmp, nil)
+}
+
+// Good: image created once, reused every frame
+type Game struct {
+    redSquare *ebiten.Image
+}
+
+func NewGame() *Game {
+    img := ebiten.NewImage(64, 64)
+    img.Fill(color.RGBA{255, 0, 0, 255})
+    return &Game{redSquare: img}
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    screen.DrawImage(g.redSquare, nil)
+}
+```
+
+## Use sprite sheets and sub-images
+
+Loading each sprite as a separate image increases the number of GPU state changes. Packing sprites into a single sheet and drawing sub-regions with `SubImage` is significantly faster.
+
+```go
+import "image"
+
+// Load the full sprite sheet once
+spriteSheet, _, _ := ebitenutil.NewImageFromFile("sprites.png")
+
+// Define sub-image regions for each frame
+frameRect := image.Rect(0, 0, 32, 32)
+frame := spriteSheet.SubImage(frameRect).(*ebiten.Image)
+
+// Draw the sub-image
+screen.DrawImage(frame, opts)
+```
+
+<Tip>
+  Tools like [TexturePacker](https://www.codeandweb.com/texturepacker) can automate sprite sheet creation and export the accompanying atlas JSON for you to load at runtime.
+</Tip>
+
+## Batch draw calls with offscreen images
+
+Every call to `DrawImage` has overhead. When you draw many elements that don't change relative to each other (tilemaps, static backgrounds, UI panels), render them once to an offscreen image and blit that single image each frame.
+
+```go
+type Game struct {
+    background *ebiten.Image // offscreen render target
+    tiles      *ebiten.Image // tile sheet
+}
+
+func NewGame() *Game {
+    g := &Game{
+        background: ebiten.NewImage(screenWidth, screenHeight),
+        // ...load tiles...
+    }
+    g.renderBackground() // render once
+    return g
+}
+
+func (g *Game) renderBackground() {
+    for y := 0; y < tilesY; y++ {
+        for x := 0; x < tilesX; x++ {
+            opts := &ebiten.DrawImageOptions{}
+            opts.GeoM.Translate(float64(x*tileSize), float64(y*tileSize))
+            g.background.DrawImage(g.tileAt(x, y), opts)
+        }
+    }
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    // Single draw call for the entire background
+    screen.DrawImage(g.background, nil)
+    // Draw dynamic elements on top...
+}
+```
+
+## Prefer ColorScale over ColorM
+
+In Ebitengine v2, `ebiten.ColorM` was deprecated in favor of `DrawImageOptions.ColorScale`. `ColorM` required a full matrix multiplication per pixel on older drivers; `ColorScale` maps to a cheaper per-channel multiply.
+
+<Note>
+  `ColorM` is still present for compatibility but should be avoided in new code. Use `ColorScale` for tinting and transparency.
+</Note>
+
+```go
+opts := &ebiten.DrawImageOptions{}
+
+// Bad (legacy): use ColorM for alpha
+opts.ColorM.Scale(1, 1, 1, 0.5)
+
+// Good: use ColorScale
+opts.ColorScale.ScaleAlpha(0.5)
+
+// Tinting with ColorScale
+opts.ColorScale.Scale(1.2, 0.8, 0.8, 1) // slightly red tint
+```
+
+## Reduce overdraw
+
+Alpha blending is not free. Every pixel that Ebitengine draws (even fully transparent ones) consumes fill-rate bandwidth. Overdraw — drawing the same screen pixel multiple times per frame — multiplies that cost.
+
+<Warning>
+  Avoid drawing large fully-transparent images. Clip draw regions to the visible portion of the screen where possible.
+</Warning>
+
+Strategies to reduce overdraw:
+- Draw the background first, then opaque sprites, then transparent effects.
+- Skip drawing objects entirely when they're outside the screen bounds.
+- Use `image.Rect` sub-images to draw only the needed region of a sprite sheet.
+
+```go
+// Skip objects outside the viewport
+func (g *Game) Draw(screen *ebiten.Image) {
+    for _, obj := range g.objects {
+        if obj.X+obj.W < 0 || obj.X > screenWidth {
+            continue // off-screen, skip
+        }
+        screen.DrawImage(obj.Image, obj.Opts)
+    }
+}
+```
+
+## Profile with pprof
+
+Go's built-in profiler works seamlessly with Ebitengine. Wrap your game in an HTTP pprof server to capture CPU and memory profiles.
+
+```go
+import (
+    "net/http"
+    _ "net/http/pprof"
+)
+
+func main() {
+    go func() {
+        http.ListenAndServe("localhost:6060", nil)
+    }()
+    ebiten.RunGame(&Game{})
+}
+```
+
+Then capture a 30-second CPU profile while the game is running:
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+```
+
+<Tip>
+  Use `go tool pprof -http=:8080 cpu.prof` to open an interactive flame graph in your browser. Look for unexpected time spent in `ebiten.(*Image).DrawImage` or GC-related calls.
+</Tip>
+
+## Minimize allocations in the game loop
+
+Every heap allocation that occurs in `Update` or `Draw` adds GC pressure. Over thousands of frames, even small allocations add up.
+
+<AccordionGroup>
+  <Accordion title="Reuse DrawImageOptions">
+    Allocate `DrawImageOptions` once as a struct field, then reset it each frame instead of using `&ebiten.DrawImageOptions{}` inline.
+
+    ```go
+    type Game struct {
+        opts ebiten.DrawImageOptions
+    }
+
+    func (g *Game) Draw(screen *ebiten.Image) {
+        g.opts.GeoM.Reset()
+        g.opts.GeoM.Translate(g.x, g.y)
+        screen.DrawImage(g.sprite, &g.opts)
+    }
+    ```
+  </Accordion>
+  <Accordion title="Pre-allocate slices">
+    Use `make([]T, 0, capacity)` with a known upper bound instead of growing slices dynamically inside the game loop.
+
+    ```go
+    type Game struct {
+        visibleObjects []*Object // reused each frame
+    }
+
+    func (g *Game) Update() error {
+        g.visibleObjects = g.visibleObjects[:0] // reset length, keep capacity
+        for _, obj := range g.allObjects {
+            if obj.Visible {
+                g.visibleObjects = append(g.visibleObjects, obj)
+            }
+        }
+        return nil
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Summary
+
+<CardGroup cols={2}>
+  <Card title="Cache images" icon="database">
+    Create `ebiten.NewImage` once at startup. Never allocate inside `Update` or `Draw`.
+  </Card>
+  <Card title="Use sprite sheets" icon="table-cells">
+    Pack sprites into a single texture and use `SubImage` to select frames.
+  </Card>
+  <Card title="Batch with offscreen images" icon="layer-group">
+    Render static content to an offscreen image once, then blit it each frame.
+  </Card>
+  <Card title="Profile early" icon="chart-bar">
+    Use `net/http/pprof` to find real bottlenecks before optimizing speculatively.
+  </Card>
+</CardGroup>

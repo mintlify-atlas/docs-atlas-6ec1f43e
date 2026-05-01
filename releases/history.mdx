@@ -1,0 +1,123 @@
+---
+title: "Ebitengine release history and changelog"
+description: "A chronological timeline of Ebitengine's development from 2013 through the v2.x era, including the project rename, mobile, WASM, and console support."
+keywords: ['ebitengine', 'ebiten', 'history', 'changelog', 'timeline', 'release history', 'versions']
+---
+
+Ebitengine (originally named Ebiten) has been in continuous development since 2013. What started as a personal experiment in Go graphics has grown into a cross-platform 2D game engine that ships games to desktop, mobile, web, and consoles. This page traces the major milestones from the project's first commit to the present v2.x release series.
+
+For the complete list of tagged releases and their commit-level changelogs, see the [GitHub releases page](https://github.com/hajimehoshi/ebiten/releases).
+
+---
+
+<Steps>
+
+  <Step title="2013 — Project created">
+
+    Hajime Hoshi created Ebiten as a simple, dependency-light 2D graphics library for Go, initially targeting macOS via OpenGL. The name is a portmanteau of *ebi* (shrimp, a nod to Go's gopher mascot) and *ten* (heaven). Early versions exposed a minimal API: create an image, draw an image, handle input.
+
+  </Step>
+
+  <Step title="2014–2016 — GopherJS and browser support">
+
+    Ebiten gained a GopherJS backend, allowing the same Go source code to run in a browser by compiling to JavaScript and rendering via WebGL. This was an early demonstration that Ebiten's abstractions were genuinely portable across rendering backends, not just a thin wrapper around a single API.
+
+  </Step>
+
+  <Step title="2016–2018 — Mobile support (iOS and Android)">
+
+    iOS and Android targets were added, implemented on top of OpenGL ES. `gomobile` tooling allowed games to be built as native mobile applications. The `ebiten/mobile` sub-package exposed lifecycle hooks for foreground/background transitions.
+
+    A continuous release cadence of minor versions (v1.2 through v1.9) delivered incremental improvements: audio support via the `audio` package, gamepad and touch input, screen-size utilities, and the `inpututil` helper package.
+
+  </Step>
+
+  <Step title="2018–2020 — v1.x stabilisation">
+
+    The v1.x series matured through versions v1.10, v1.11, and v1.12. Key additions during this period included:
+
+    - The Kage shading language (custom per-pixel GPU programs written in a Go-like syntax), introduced in v1.12.
+    - WebAssembly (`js/wasm`) support, replacing GopherJS as the primary browser target.
+    - `ebiten.Image.ReplacePixels` for direct pixel manipulation.
+    - Improved audio latency and looping primitives.
+    - The `text` sub-package for font rendering backed by `golang.org/x/image/font`.
+
+    <Note>
+      v1.12 is the last v1 release. It is the recommended baseline when following the [migration guide](/releases/v2-migration).
+    </Note>
+
+  </Step>
+
+  <Step title="January 2021 — v2.0.0 released">
+
+    v2.0.0 was the first major version bump in the project's history. It adopted Go module conventions by changing the import path to `github.com/hajimehoshi/ebiten/v2` and removed all symbols that had been deprecated during v1. The most significant API change was the introduction of the `Game` interface as the single entry-point for game logic, replacing the older functional `ebiten.Run` approach.
+
+    See the [v2 release notes](/releases/v2) for a full breakdown.
+
+  </Step>
+
+  <Step title="June 2021 — v2.1.0">
+
+    v2.1 added transparent window support (`ebiten.SetScreenTransparent`), per-frame clear control (`ebiten.SetScreenClearedEveryFrame`), window size limits, seamless audio looping helpers, and expanded `inpututil` coverage for gamepads and touch.
+
+  </Step>
+
+  <Step title="December 2021 — v2.2.0">
+
+    v2.2 shipped the `vector` sub-package for anti-aliased 2D paths, introduced `ebiten.ColorScale` as a lightweight alternative to `ColorM`, and overhauled blend mode configuration with the `ebiten.Blend` struct.
+
+  </Step>
+
+  <Step title="2022 — Renamed to Ebitengine">
+
+    With the v2.3 development cycle, the project was officially renamed from **Ebiten** to **Ebitengine**. The rename reflected the project's growth from a graphics library into a full game engine, and disambiguated the engine from its core package name (`ebiten`). The import path and package names were not changed — only the project's human-readable name.
+
+    <Info>
+      The package identifier in Go code remains `ebiten`. Only the project name changed.
+    </Info>
+
+  </Step>
+
+  <Step title="August 2022 — v2.3.0">
+
+    v2.3 introduced the `text/v2` sub-package with support for variable fonts and a cleaner face-management API, added mouse passthrough for overlay windows, and improved Kage with integer uniform types and better error messages.
+
+  </Step>
+
+  <Step title="2022–2023 — Nintendo Switch and Steam">
+
+    Ebitengine added official support for Nintendo Switch (via a private repository available to licensed Nintendo developers) and established a track record of commercial releases on Steam. Several independently developed games built on Ebitengine shipped on Steam during this period, validating the engine for production use.
+
+  </Step>
+
+  <Step title="March 2023 — v2.4.0">
+
+    v2.4 focused on Kage shader expressiveness (new built-ins, better GLSL ES 3.0 alignment), rendering performance (aggressive draw-call batching, stencil-based compositing), and expanded platform support including `wasip1` WebAssembly targets.
+
+  </Step>
+
+  <Step title="Ongoing — v2.5.x and beyond">
+
+    Development continues on the v2 line. The project follows a roughly quarterly release cadence for minor versions. Tracked work includes a clipping API, further `text/v2` improvements, and continued Kage language evolution.
+
+    Follow the [GitHub releases page](https://github.com/hajimehoshi/ebiten/releases) for the latest tagged releases and their full changelogs.
+
+  </Step>
+
+</Steps>
+
+---
+
+## Version summary
+
+| Version | Date | Headline |
+|---|---|---|
+| v1.0 | 2016 | First stable release |
+| v1.6 | 2017 | iOS and Android support |
+| v1.10 | 2018 | WebAssembly target |
+| v1.12 | 2020 | Kage shading language |
+| v2.0.0 | Jan 2021 | New import path, `Game` interface |
+| v2.1.0 | Jun 2021 | Transparent windows, audio loops |
+| v2.2.0 | Dec 2021 | `vector` package, `ColorScale`, `Blend` |
+| v2.3.0 | Aug 2022 | `text/v2`, renamed to Ebitengine |
+| v2.4.0 | Mar 2023 | Kage improvements, draw-call batching |

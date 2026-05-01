@@ -1,0 +1,183 @@
+---
+title: "Graphics and rendering examples in Ebitengine"
+description: "Thirteen Ebitengine graphics examples: sprites, animation, particles, Mandelbrot fractals, Perlin noise, Kage shaders, blur, color, filtering, and more."
+keywords: ["ebitengine", "graphics", "sprites", "animation", "shader", "kage", "particles", "mandelbrot", "perlin noise", "blur", "high dpi"]
+---
+
+These examples cover the full range of Ebitengine's 2D rendering capabilities, from straightforward sprite drawing to custom GPU shaders written in Ebitengine's Kage shading language. Each is a standalone program you can run, read, and modify.
+
+<Tip>
+  All examples are hosted live at [ebitengine.org/en/examples/](https://ebitengine.org/en/examples/) if you want to try them before running locally.
+</Tip>
+
+## Sprites and animation
+
+<AccordionGroup>
+  <Accordion title="Sprites — drawing multiple sprites" icon="image">
+    Draws a large number of sprite instances from a single source image using `DrawImage` with `DrawImageOptions`. Demonstrates how to position, scale, and rotate individual sprites efficiently in a single `Draw` call cycle.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/sprites@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/sprites) · [Play in browser](https://ebitengine.org/en/examples/sprites.html)
+  </Accordion>
+
+  <Accordion title="Animation — frame-based sprite animation" icon="film">
+    Plays a frame-by-frame sprite animation from a sprite sheet. Shows how to select sub-images from a texture atlas using `image.Rectangle`, advance frames on a timer, and loop an animation cycle.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/animation@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/animation) · [Play in browser](https://ebitengine.org/en/examples/animation.html)
+  </Accordion>
+
+  <Accordion title="Stars — parallax star field" icon="star">
+    A scrolling star field with multiple parallax layers moving at different speeds. Demonstrates using `DrawImageOptions.GeoM` for translation, managing many small objects, and creating a sense of depth through layered scrolling speeds.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/stars@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/stars) · [Play in browser](https://ebitengine.org/en/examples/stars.html)
+  </Accordion>
+</AccordionGroup>
+
+## Particle systems and procedural graphics
+
+<AccordionGroup>
+  <Accordion title="Particles — particle system" icon="sparkles">
+    A GPU-friendly particle system that emits, moves, and fades hundreds of particles per frame. Shows how to manage a pool of particle structs, update them in `Update`, and render them with per-particle color and position transforms.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/particles@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/particles) · [Play in browser](https://ebitengine.org/en/examples/particles.html)
+  </Accordion>
+
+  <Accordion title="Noise — Perlin noise visualization" icon="waves">
+    Renders a scrolling Perlin noise field as a grayscale image. Demonstrates how to write pixel data directly into an `ebiten.Image` using `WritePixels`, and how to animate procedural content by advancing the noise offset each frame.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/noise@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/noise) · [Play in browser](https://ebitengine.org/en/examples/noise.html)
+  </Accordion>
+
+  <Accordion title="Mandelbrot — fractal renderer" icon="circle-dot">
+    Renders the Mandelbrot set at full screen resolution. Shows how to compute a fractal iteratively in Go, write the result into an `ebiten.Image` pixel buffer, and map iteration counts to colors.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/mandelbrot@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/mandelbrot) · [Play in browser](https://ebitengine.org/en/examples/mandelbrot.html)
+  </Accordion>
+</AccordionGroup>
+
+## Shaders
+
+Ebitengine includes [Kage](https://ebitengine.org/en/documents/shader.html), a Go-like shading language that compiles to GLSL, MSL, or HLSL depending on the platform.
+
+<AccordionGroup>
+  <Accordion title="Shader — custom Kage shader" icon="code-2">
+    The canonical introduction to writing Kage shaders in Ebitengine. Shows how to define a shader source file, compile it with `ebiten.NewShader`, and draw with it via `DrawTrianglesShader` or `DrawRectShader`.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/shader@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/shader) · [Play in browser](https://ebitengine.org/en/examples/shader.html)
+  </Accordion>
+
+  <Accordion title="Blur — Gaussian blur shader" icon="aperture">
+    Applies a two-pass Gaussian blur to an image using a Kage shader. A practical example of ping-pong rendering between two off-screen images and passing uniform parameters (blur radius) to a shader at runtime.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/blur@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/blur) · [Play in browser](https://ebitengine.org/en/examples/blur.html)
+  </Accordion>
+</AccordionGroup>
+
+## Color, filtering, and effects
+
+<AccordionGroup>
+  <Accordion title="HSV — color space manipulation" icon="palette">
+    Adjusts hue, saturation, and value of a source image in real time using `ColorM` or a color matrix applied through `DrawImageOptions`. Demonstrates how Ebitengine's color matrix transforms work and how to build interactive color controls.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/hsv@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/hsv) · [Play in browser](https://ebitengine.org/en/examples/hsv.html)
+  </Accordion>
+
+  <Accordion title="Filter — image filtering" icon="sliders-horizontal">
+    Compares nearest-neighbor and bilinear filtering modes when scaling images. Shows how to set `DrawImageOptions.Filter` to `ebiten.FilterNearest` or `ebiten.FilterLinear` and the visual difference between them.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/filter@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/filter) · [Play in browser](https://ebitengine.org/en/examples/filter.html)
+  </Accordion>
+
+  <Accordion title="Mosaic — pixel mosaic effect" icon="grid-3x3">
+    Creates a mosaic (pixelation) effect by rendering a source image at reduced resolution and scaling it back up. Demonstrates off-screen rendering to a small `ebiten.Image` and upscaling with nearest-neighbor filtering.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/mosaic@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/mosaic) · [Play in browser](https://ebitengine.org/en/examples/mosaic.html)
+  </Accordion>
+
+  <Accordion title="Masking — image masking" icon="scissors">
+    Applies an alpha mask to cut out a shape from an image using compositing operations. Shows how to use `ebiten.CompositeModeCopy` and off-screen images to implement mask-based rendering.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/masking@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/masking) · [Play in browser](https://ebitengine.org/en/examples/masking.html)
+  </Accordion>
+
+  <Accordion title="Highdpi — high-DPI rendering" icon="monitor">
+    Shows how to detect device pixel ratio and render at full native resolution on high-DPI (Retina) displays. Demonstrates `ebiten.DeviceScaleFactor` and scaling the logical screen size accordingly.
+
+    **Run it:**
+    ```bash
+    go run github.com/hajimehoshi/ebiten/v2/examples/highdpi@latest
+    ```
+
+    [View source](https://github.com/hajimehoshi/ebiten/tree/main/examples/highdpi) · [Play in browser](https://ebitengine.org/en/examples/highdpi.html)
+  </Accordion>
+</AccordionGroup>
+
+## Key APIs used in these examples
+
+| API | What it does |
+|-----|-------------|
+| `ebiten.NewImage` | Create an off-screen render target |
+| `image.DrawImage` | Draw a source image with a transform |
+| `DrawImageOptions.GeoM` | Geometric transform (translate, rotate, scale) |
+| `ebiten.NewShader` | Compile a Kage shader program |
+| `DrawRectShader` | Draw a rectangle using a custom shader |
+| `image.WritePixels` | Write raw RGBA bytes into an image |

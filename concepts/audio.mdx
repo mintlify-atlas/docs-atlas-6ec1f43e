@@ -1,0 +1,258 @@
+---
+title: "Playing audio in Ebitengine games"
+description: "Set up an audio context, load OGG, WAV, and MP3 files, stream them with audio.Player, and control volume and playback in Ebitengine."
+---
+
+Ebitengine's audio system is built around a single `audio.Context` that manages a software mixer running at a fixed sample rate. You create one context at startup, decode audio files into streams, and open `Player` instances to control playback. Multiple players can run simultaneously for sound effects, music, and ambient layers.
+
+## Creating the audio context
+
+Create exactly one context for the lifetime of your game:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/audio"
+
+const sampleRate = 44100
+
+func NewGame() (*Game, error) {
+    audioContext := audio.NewContext(sampleRate)
+    return &Game{audioContext: audioContext}, nil
+}
+```
+
+<Note>
+Use 44100 Hz or 48000 Hz. Other rates are valid but these are the most universally supported values across platforms.
+</Note>
+
+## Loading audio files
+
+Ebitengine provides sub-packages for each format. Embed your audio files with `//go:embed` for straightforward distribution.
+
+<Tabs>
+  <Tab title="OGG / Vorbis">
+    ```go
+    import (
+        "bytes"
+
+        _ "embed"
+
+        "github.com/hajimehoshi/ebiten/v2/audio"
+        "github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+    )
+
+    //go:embed assets/music.ogg
+    var musicData []byte
+
+    func loadMusic(ctx *audio.Context) (*audio.Player, error) {
+        stream, err := vorbis.DecodeWithSampleRate(sampleRate, bytes.NewReader(musicData))
+        if err != nil {
+            return nil, err
+        }
+        // Loop the track indefinitely
+        loop := audio.NewInfiniteLoop(stream, stream.Length())
+        return ctx.NewPlayer(loop)
+    }
+    ```
+  </Tab>
+  <Tab title="WAV">
+    ```go
+    import (
+        "bytes"
+
+        _ "embed"
+
+        "github.com/hajimehoshi/ebiten/v2/audio"
+        "github.com/hajimehoshi/ebiten/v2/audio/wav"
+    )
+
+    //go:embed assets/shoot.wav
+    var shootData []byte
+
+    func loadSFX(ctx *audio.Context) (*audio.Player, error) {
+        stream, err := wav.DecodeWithSampleRate(sampleRate, bytes.NewReader(shootData))
+        if err != nil {
+            return nil, err
+        }
+        return ctx.NewPlayer(stream)
+    }
+    ```
+  </Tab>
+  <Tab title="MP3">
+    ```go
+    import (
+        "bytes"
+
+        _ "embed"
+
+        "github.com/hajimehoshi/ebiten/v2/audio"
+        "github.com/hajimehoshi/ebiten/v2/audio/mp3"
+    )
+
+    //go:embed assets/jingle.mp3
+    var jingleData []byte
+
+    func loadJingle(ctx *audio.Context) (*audio.Player, error) {
+        stream, err := mp3.DecodeWithSampleRate(sampleRate, bytes.NewReader(jingleData))
+        if err != nil {
+            return nil, err
+        }
+        return ctx.NewPlayer(stream)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+Prefer OGG/Vorbis for music and looping audio — it offers good quality at small file sizes. Use WAV for short, latency-sensitive sound effects where you want instant playback without decoding overhead.
+</Tip>
+
+## Controlling playback
+
+`audio.Player` exposes a straightforward control API:
+
+```go
+player.Play()        // Start or resume playback
+player.Pause()       // Pause at the current position
+player.Rewind()      // Seek back to position 0
+player.Close()       // Release resources (required when done)
+
+playing := player.IsPlaying() // true while audio is outputting
+pos := player.Position()      // current playback position as time.Duration
+```
+
+## Volume control
+
+Volume is a `float64` in the range `[0.0, 1.0]`. Set it any time, including mid-playback:
+
+```go
+player.SetVolume(0.8)   // 80% volume
+player.SetVolume(0.0)   // mute
+player.SetVolume(1.0)   // full volume (default)
+
+vol := player.Volume()  // read back the current volume
+```
+
+<Info>
+There is no global master volume. Control volume per player, or keep a list of all active players to apply a global multiplier.
+</Info>
+
+## Sound effects: reuse with NewPlayerFromBytes
+
+For short sound effects that are triggered repeatedly, create a new player from the same raw bytes each time using `audio.NewPlayerFromBytes`. This avoids seeking and is safe to call every frame:
+
+```go
+type Game struct {
+    audioCtx *audio.Context
+    shootSFX []byte          // decoded PCM bytes
+}
+
+func (g *Game) playSFX() {
+    p := g.audioCtx.NewPlayerFromBytes(g.shootSFX)
+    p.Play()
+    // Player is garbage-collected after it finishes — no need to keep a reference
+}
+```
+
+<Warning>
+`NewPlayerFromBytes` expects raw PCM data (decoded, not compressed). Decode the file once at load time, then pass the PCM `[]byte` to `NewPlayerFromBytes` each time you need to trigger the effect.
+</Warning>
+
+## Looping music
+
+Use `audio.NewInfiniteLoop` to loop a stream seamlessly:
+
+```go
+loop := audio.NewInfiniteLoop(stream, stream.Length())
+player, err := ctx.NewPlayer(loop)
+if err != nil {
+    return err
+}
+player.Play()
+```
+
+For a loop that starts after an intro section, use `audio.NewInfiniteLoopWithIntro`:
+
+```go
+const introLength = int64(sampleRate * 4 * 2 * 5) // 5-second intro at 44100 Hz, stereo, 16-bit
+loop := audio.NewInfiniteLoopWithIntro(stream, introLength, stream.Length())
+```
+
+## Complete example
+
+```go
+package main
+
+import (
+    "bytes"
+    _ "embed"
+    "log"
+
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/audio"
+    "github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+    "github.com/hajimehoshi/ebiten/v2/inpututil"
+)
+
+//go:embed assets/music.ogg
+var musicOGG []byte
+
+const sampleRate = 44100
+
+type Game struct {
+    audioCtx    *audio.Context
+    musicPlayer *audio.Player
+}
+
+func NewGame() (*Game, error) {
+    ctx := audio.NewContext(sampleRate)
+
+    stream, err := vorbis.DecodeWithSampleRate(sampleRate, bytes.NewReader(musicOGG))
+    if err != nil {
+        return nil, err
+    }
+    loop := audio.NewInfiniteLoop(stream, stream.Length())
+    player, err := ctx.NewPlayer(loop)
+    if err != nil {
+        return nil, err
+    }
+    player.SetVolume(0.7)
+    player.Play()
+
+    return &Game{audioCtx: ctx, musicPlayer: player}, nil
+}
+
+func (g *Game) Update() error {
+    // Toggle music with M
+    if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+        if g.musicPlayer.IsPlaying() {
+            g.musicPlayer.Pause()
+        } else {
+            g.musicPlayer.Play()
+        }
+    }
+    return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+    status := "playing"
+    if !g.musicPlayer.IsPlaying() {
+        status = "paused"
+    }
+    ebitenutil.DebugPrintAt(screen, "Press M to toggle music — "+status, 10, 10)
+}
+
+func (g *Game) Layout(ow, oh int) (int, int) { return 640, 480 }
+
+func main() {
+    ebiten.SetWindowSize(640, 480)
+    ebiten.SetWindowTitle("Audio Demo")
+    g, err := NewGame()
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := ebiten.RunGame(g); err != nil {
+        log.Fatal(err)
+    }
+}
+```

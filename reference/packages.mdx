@@ -1,0 +1,269 @@
+---
+title: "Ebitengine packages and import paths"
+description: "Reference for all Ebitengine v2 packages: import paths and key exports for ebiten, audio, ebitenutil, inpututil, text/v2, vector, and colorm."
+---
+
+Ebitengine is distributed as a single Go module at `github.com/hajimehoshi/ebiten/v2`. The root package contains everything you need to write and run a game, while the sub-packages provide optional capabilities such as audio decoding, text rendering, and vector graphics. Import only the packages your game actually uses — each sub-package is independently versioned alongside the main module.
+
+<CardGroup cols={2}>
+  <Card title="ebiten/v2" icon="gamepad-2" href="#ebitenginev2-main-package">
+    Core package: game loop, image rendering, and input handling.
+  </Card>
+  <Card title="ebiten/v2/audio" icon="volume-2" href="#audio">
+    Audio context, players, and stream interfaces.
+  </Card>
+  <Card title="ebiten/v2/ebitenutil" icon="wrench" href="#ebitenutil">
+    Debug printing and image loading utilities.
+  </Card>
+  <Card title="ebiten/v2/inpututil" icon="keyboard" href="#inpututil">
+    Convenient helpers for detecting input state transitions.
+  </Card>
+  <Card title="ebiten/v2/text/v2" icon="type" href="#textv2">
+    Modern, Unicode-aware text rendering with font face support.
+  </Card>
+  <Card title="ebiten/v2/vector" icon="pen-tool" href="#vector">
+    Immediate-mode 2D shape drawing: lines, rectangles, circles.
+  </Card>
+</CardGroup>
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2` — main package
+
+The root package is the entry point for every Ebitengine game. It defines the `Game` interface that your struct must implement, the `RunGame` function that starts the game loop, and the `Image` type that represents every drawable surface — from the screen to off-screen render targets.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2"
+```
+
+### Key types
+
+| Type | Description |
+|---|---|
+| `Game` | Interface with `Update() error`, `Draw(*Image)`, and `Layout(int,int)(int,int)` methods. |
+| `Image` | An off-screen or on-screen pixel buffer. Used for both assets and render targets. |
+| `DrawImageOptions` | Controls how an image is drawn: geometry matrix, color scale, blend mode, and filter. |
+| `GeoM` | 2-D affine transformation matrix (translate, scale, rotate, skew). |
+| `ColorScale` | Multiplies RGBA channels independently before drawing. |
+| `Blend` | Describes the source/destination blend equation for compositing. |
+
+### Key functions
+
+| Function | Signature | Description |
+|---|---|---|
+| `RunGame` | `func RunGame(game Game) error` | Starts the main loop; blocks until the window is closed or an error is returned from `Update`. |
+| `NewImage` | `func NewImage(width, height int) *Image` | Allocates a new blank off-screen image. |
+| `NewImageFromImage` | `func NewImageFromImage(src image.Image) *Image` | Creates an `*Image` from a standard-library `image.Image`. |
+| `SetWindowSize` | `func SetWindowSize(width, height int)` | Sets the initial window size in logical pixels. |
+| `SetWindowTitle` | `func SetWindowTitle(title string)` | Sets the OS window title. |
+| `SetFullscreen` | `func SetFullscreen(fullscreen bool)` | Toggles fullscreen mode at runtime. |
+| `IsKeyPressed` | `func IsKeyPressed(key Key) bool` | Reports whether a keyboard key is currently held. |
+| `IsMouseButtonPressed` | `func IsMouseButtonPressed(b MouseButton) bool` | Reports whether a mouse button is currently held. |
+| `CursorPosition` | `func CursorPosition() (x, y int)` | Returns the cursor position in logical pixels. |
+| `AppendTouchIDs` | `func AppendTouchIDs(ids []TouchID) []TouchID` | Appends active touch IDs to the provided slice. |
+| `AppendGamepadIDs` | `func AppendGamepadIDs(ids []GamepadID) []GamepadID` | Appends connected gamepad IDs to the provided slice. |
+| `TPS` | `func TPS() int` | Returns the current actual ticks-per-second. |
+| `SetTPS` | `func SetTPS(tps int)` | Sets the target game-logic ticks per second (default 60). |
+| `ActualTPS` | `func ActualTPS() float64` | Returns the measured TPS over the last second. |
+| `ActualFPS` | `func ActualFPS() float64` | Returns the measured frames-per-second over the last second. |
+
+### `(*Image)` methods
+
+| Method | Description |
+|---|---|
+| `DrawImage(img *Image, opts *DrawImageOptions)` | Draws `img` onto the receiver. |
+| `DrawRectShader(width, height int, shader *Shader, opts *DrawRectShaderOptions)` | Runs a Kage shader over a rectangle. |
+| `Fill(c color.Color)` | Fills the entire image with a solid colour. |
+| `SubImage(r image.Rectangle) image.Image` | Returns a view into a sub-region (useful for sprite sheets). |
+| `Bounds() image.Rectangle` | Returns the pixel bounds of the image. |
+| `Size() (int, int)` | Returns width and height in pixels. |
+| `Clear()` | Resets every pixel to transparent black. |
+| `Set(x, y int, c color.Color)` | Sets an individual pixel (slow; avoid in the hot path). |
+| `At(x, y int) color.Color` | Reads an individual pixel (slow; avoid in the hot path). |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/audio`
+
+Provides the audio context and player infrastructure. All audio in Ebitengine flows through a single `Context` that you create once at startup.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/audio"
+```
+
+| Symbol | Description |
+|---|---|
+| `NewContext(sampleRate int) *Context` | Creates the global audio context. Call once; typical sample rates are 44100 or 48000. |
+| `(*Context).NewPlayer(src io.Reader) (*Player, error)` | Creates a player from any `io.Reader` that provides raw PCM (signed 16-bit little-endian, interleaved stereo). |
+| `(*Context).NewPlayerFromBytes(data []byte) *Player` | Creates a player backed by an in-memory byte slice. |
+| `(*Player).Play()` | Starts or resumes playback. |
+| `(*Player).Pause()` | Pauses playback without resetting position. |
+| `(*Player).Rewind() error` | Seeks back to position 0. |
+| `(*Player).Seek(offset int64, whence int) (int64, error)` | Seeks to an arbitrary byte position. |
+| `(*Player).IsPlaying() bool` | Reports whether the player is currently active. |
+| `(*Player).SetVolume(vol float64)` | Sets the playback volume (0.0–1.0). |
+| `(*Player).Volume() float64` | Returns the current volume. |
+| `(*Player).Close() error` | Releases underlying resources. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/audio/vorbis`
+
+Decodes OGG Vorbis audio files into a stream compatible with `audio.NewPlayer`.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+```
+
+| Symbol | Description |
+|---|---|
+| `DecodeWithSampleRate(sampleRate int, src io.ReadSeeker) (*Stream, error)` | Decodes an OGG Vorbis stream, resampling to `sampleRate` if necessary. |
+| `(*Stream).Length() int64` | Returns the byte length of the decoded PCM data. |
+
+<Tip>
+Prefer OGG Vorbis for music tracks. It offers a good quality-to-size ratio and is supported on all Ebitengine target platforms including the web.
+</Tip>
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/audio/wav`
+
+Decodes WAV files (PCM, 8-bit or 16-bit, mono or stereo).
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/audio/wav"
+```
+
+| Symbol | Description |
+|---|---|
+| `DecodeWithSampleRate(sampleRate int, src io.ReadSeeker) (*Stream, error)` | Decodes a WAV file, resampling to `sampleRate` if necessary. |
+| `(*Stream).Length() int64` | Returns the byte length of the decoded PCM data. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/audio/mp3`
+
+Decodes MP3 files using a pure-Go decoder.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/audio/mp3"
+```
+
+| Symbol | Description |
+|---|---|
+| `DecodeWithSampleRate(sampleRate int, src io.ReadSeeker) (*Stream, error)` | Decodes an MP3 stream, resampling to `sampleRate` if necessary. |
+| `(*Stream).Length() int64` | Returns the byte length of the decoded PCM data. |
+
+<Note>
+MP3 patents have expired, but for new projects OGG Vorbis (`audio/vorbis`) is generally preferred for better compression and gapless looping support.
+</Note>
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/ebitenutil`
+
+A collection of utilities for debugging and quick prototyping. The functions here are intentionally simple and suitable for development builds.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+```
+
+| Symbol | Description |
+|---|---|
+| `DebugPrint(img *ebiten.Image, str string)` | Renders `str` in the built-in monospace debug font at the top-left corner of `img`. |
+| `DebugPrintAt(img *ebiten.Image, str string, x, y int)` | Same as `DebugPrint` but at an arbitrary position. |
+| `NewImageFromFile(path string) (*ebiten.Image, image.Image, error)` | Loads a PNG or JPEG from disk and returns an `*ebiten.Image`. |
+| `NewImageFromFileSystem(fs fs.FS, path string) (*ebiten.Image, image.Image, error)` | Same as above but reads from an `fs.FS` (e.g. `embed.FS`). |
+| `DrawLine(dst *ebiten.Image, x1, y1, x2, y2 float64, c color.Color)` | Draws a 1-pixel-wide anti-aliased line. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/inpututil`
+
+Provides edge-detection helpers that complement the raw polling functions in the main package. Use these to detect the exact tick when a key or button transitions from released to pressed (or vice versa).
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/inpututil"
+```
+
+| Symbol | Description |
+|---|---|
+| `IsKeyJustPressed(key ebiten.Key) bool` | True on the first tick the key becomes pressed. |
+| `IsKeyJustReleased(key ebiten.Key) bool` | True on the first tick the key becomes released. |
+| `KeyPressDuration(key ebiten.Key) int` | Returns the number of ticks the key has been held. |
+| `IsMouseButtonJustPressed(b ebiten.MouseButton) bool` | True on the first tick the mouse button becomes pressed. |
+| `IsMouseButtonJustReleased(b ebiten.MouseButton) bool` | True on the first tick the mouse button becomes released. |
+| `MouseButtonPressDuration(b ebiten.MouseButton) int` | Ticks the mouse button has been held. |
+| `IsGamepadButtonJustPressed(id ebiten.GamepadID, b ebiten.GamepadButton) bool` | Edge detection for gamepad buttons. |
+| `IsTouchJustReleased(id ebiten.TouchID) bool` | True on the first tick a touch contact is lifted. |
+| `AppendJustPressedKeys(keys []ebiten.Key) []ebiten.Key` | Appends all keys that became pressed this tick. |
+| `AppendJustReleasedKeys(keys []ebiten.Key) []ebiten.Key` | Appends all keys that became released this tick. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/text` — legacy text rendering
+
+The original text package. Still functional but superseded by `text/v2` for new projects.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/text"
+```
+
+| Symbol | Description |
+|---|---|
+| `Draw(dst *ebiten.Image, str string, face font.Face, x, y int, c color.Color)` | Renders a string at `(x, y)` using a `golang.org/x/image/font.Face`. |
+| `BoundString(face font.Face, str string) image.Rectangle` | Returns the bounding rectangle of a rendered string without drawing it. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/text/v2`
+
+The modern text rendering package. Supports Unicode, right-to-left text, and custom glyph atlases. Requires `golang.org/x/text` for shaping.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/text/v2"
+```
+
+| Symbol | Description |
+|---|---|
+| `NewGoXFaceFromGoFontFace(f font.Face) *GoXFace` | Wraps a `golang.org/x/image/font.Face` for use with this package. |
+| `NewGoTextFaceSource(r io.ReadSeeker) (*GoTextFaceSource, error)` | Parses a TrueType or OpenType font from a reader. |
+| `Draw(dst *ebiten.Image, str string, f Face, opts *DrawOptions)` | Renders a string using the new pipeline. |
+| `Measure(str string, f Face, lineSpacingInPixels float64) (float64, float64)` | Returns the width and height of rendered text without drawing. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/vector`
+
+Immediate-mode 2D vector shape drawing. All functions draw into an `*ebiten.Image`. Shapes are rasterised on the CPU each frame, so keep draw calls reasonable for performance-critical paths.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/vector"
+```
+
+| Symbol | Description |
+|---|---|
+| `DrawFilledRect(dst *ebiten.Image, x, y, w, h float32, c color.Color, antialias bool)` | Draws a filled axis-aligned rectangle. |
+| `StrokeRect(dst *ebiten.Image, x, y, w, h, strokeWidth float32, c color.Color, antialias bool)` | Draws a stroked (outline) rectangle. |
+| `DrawFilledCircle(dst *ebiten.Image, cx, cy, r float32, c color.Color, antialias bool)` | Draws a filled circle. |
+| `StrokeCircle(dst *ebiten.Image, cx, cy, r, strokeWidth float32, c color.Color, antialias bool)` | Draws a stroked circle. |
+| `StrokeLine(dst *ebiten.Image, x0, y0, x1, y1, strokeWidth float32, c color.Color, antialias bool)` | Draws a line segment with configurable width. |
+| `Path` (type) | A builder for arbitrary cubic Bézier paths; call `Fill` or `Stroke` to rasterise. |
+
+---
+
+## `github.com/hajimehoshi/ebiten/v2/colorm`
+
+Matrix-based colour transformation applied at draw time. Useful for effects like tinting, greyscale, or brightness adjustment.
+
+```go
+import "github.com/hajimehoshi/ebiten/v2/colorm"
+```
+
+| Symbol | Description |
+|---|---|
+| `ColorM` (type) | A 4×5 matrix that transforms RGBA values. Identity by default. |
+| `(*ColorM).Scale(r, g, b, a float64)` | Multiplies each channel by the given factor. |
+| `(*ColorM).Translate(r, g, b, a float64)` | Adds a constant offset to each channel after scaling. |
+| `(*ColorM).RotateHue(theta float64)` | Rotates hue by `theta` radians. |
+| `DrawImage(dst, src *ebiten.Image, cm ColorM, opts *ebiten.DrawImageOptions)` | Draws `src` onto `dst` applying `cm` as a colour transform. |

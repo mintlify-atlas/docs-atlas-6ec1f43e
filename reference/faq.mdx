@@ -1,0 +1,258 @@
+---
+title: "Frequently asked questions about Ebitengine"
+description: "Answers to common Ebitengine v2 questions: Go version requirements, 3D support, game speed, asset embedding, web audio, high-DPI, and TPS settings."
+---
+
+This page collects the questions that come up most often in the Ebitengine community. If your question is not answered here, check the [GitHub Discussions](https://github.com/hajimehoshi/ebiten/discussions) board or the `#ebitengine` channel on the Gophers Slack.
+
+<AccordionGroup>
+
+<Accordion title="What is the difference between Ebiten and Ebitengine?">
+
+They refer to the same project at different points in its history. The engine was originally called **Ebiten** and lived at `github.com/hajimehoshi/ebiten`. In 2021 it was rebranded to **Ebitengine** to better reflect its scope, and the Go module was updated to `github.com/hajimehoshi/ebiten/v2`.
+
+For all new projects, use the `v2` import path:
+
+```go
+import "github.com/hajimehoshi/ebiten/v2"
+```
+
+The v1 module at `github.com/hajimehoshi/ebiten` is no longer maintained.
+
+</Accordion>
+
+<Accordion title="What Go version is required?">
+
+Ebitengine v2 requires **Go 1.21 or later**. The `go.mod` of the module specifies the minimum version, and this is updated periodically to stay within the two most recent stable Go releases.
+
+You can check the exact requirement for the version you are using:
+
+```bash
+go list -m -json github.com/hajimehoshi/ebiten/v2 | grep GoVersion
+```
+
+Using the latest stable Go release is always recommended.
+
+</Accordion>
+
+<Accordion title="Does Ebitengine support 3D graphics?">
+
+Ebitengine is a **2D** game engine and does not provide a built-in 3D rendering pipeline. However, you can approximate many 3D effects:
+
+- **Perspective sprites / billboard rendering** — scale and position sprites based on a Z value.
+- **Isometric or top-down 3D** — commonly used in Ebitengine games.
+- **Kage shaders** — the built-in shading language lets you write custom fragment shaders that can perform ray-marching, fake lighting, or other GPU tricks.
+
+For full 3D, consider pairing Go with a dedicated 3D library (e.g., `g3n`, `three-go`) separately from Ebitengine, or use a different engine.
+
+</Accordion>
+
+<Accordion title="Why is my game running at the wrong speed?">
+
+Ebitengine decouples **logic ticks** (`Update`) from **render frames** (`Draw`). By default, `Update` is called 60 times per second regardless of the display refresh rate.
+
+Common causes of incorrect speed:
+
+- **Movement tied to frames instead of ticks** — always move entities in `Update`, never in `Draw`.
+- **TPS changed accidentally** — call `ebiten.SetTPS(60)` explicitly to ensure a stable rate, or use `ebiten.SyncWithFPS` to match the display.
+- **Frame skipping** — if `Update` takes longer than one tick, Ebitengine will call it multiple times before the next `Draw`. Keep `Update` fast.
+
+To diagnose, overlay the actual TPS and FPS:
+
+```go
+func (g *Game) Draw(screen *ebiten.Image) {
+    ebitenutil.DebugPrint(screen, fmt.Sprintf(
+        "TPS: %.1f  FPS: %.1f",
+        ebiten.ActualTPS(),
+        ebiten.ActualFPS(),
+    ))
+}
+```
+
+</Accordion>
+
+<Accordion title="How do I embed assets (images, audio) into my binary?">
+
+Use the standard `embed` package introduced in Go 1.16:
+
+```go
+import (
+    _ "embed"
+    "bytes"
+    "github.com/hajimehoshi/ebiten/v2"
+)
+
+//go:embed assets/player.png
+var playerPNG []byte
+
+func loadPlayer() *ebiten.Image {
+    img, _, err := image.Decode(bytes.NewReader(playerPNG))
+    if err != nil {
+        panic(err)
+    }
+    return ebiten.NewImageFromImage(img)
+}
+```
+
+For a whole directory, use `embed.FS`:
+
+```go
+//go:embed assets
+var assets embed.FS
+
+img, _, _ := ebitenutil.NewImageFromFileSystem(assets, "assets/player.png")
+```
+
+<Tip>
+Embedding assets is the recommended approach for distributing games as a single executable, and it is required for WebAssembly builds.
+</Tip>
+
+</Accordion>
+
+<Accordion title="Can I use Ebitengine on a Raspberry Pi?">
+
+Yes. Ebitengine supports Linux on ARM, which covers the Raspberry Pi. A few things to keep in mind:
+
+- **GPU driver** — use the Mesa/Broadcom open-source driver (or the firmware-based driver on older Pi models). Ebitengine will use OpenGL ES on ARM Linux automatically.
+- **Performance** — the Pi's GPU is limited. Keep your draw call count low, avoid large off-screen images, and profile with `ebiten.ActualFPS()`.
+- **Cross-compilation** — you can cross-compile from an x86 machine with `GOARCH=arm64 GOOS=linux go build`.
+
+Ebitengine also targets Android (which runs on ARM), so the same binary can technically be adapted for both platforms with the appropriate build tags.
+
+</Accordion>
+
+<Accordion title="Why does audio not play on the web (WebAssembly)?">
+
+Browsers block audio playback until the user has interacted with the page — this is the **Web Audio autoplay policy**. If you start your audio context or call `player.Play()` before the first click or key press, the browser will silently ignore it.
+
+The fix is to defer audio initialisation until after the first user interaction:
+
+```go
+func (g *Game) Update() error {
+    if !g.audioReady {
+        if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
+            len(inpututil.AppendJustPressedKeys(nil)) > 0 {
+            g.audioCtx = audio.NewContext(44100)
+            g.music.Play()
+            g.audioReady = true
+        }
+    }
+    return nil
+}
+```
+
+<Warning>
+Creating `audio.NewContext` before the first interaction is safe, but calling `player.Play()` will have no effect until the browser's autoplay policy is satisfied.
+</Warning>
+
+</Accordion>
+
+<Accordion title="How do I handle high-DPI / retina displays?">
+
+Ebitengine's `Layout` method returns the **logical** (device-independent) screen size. Ebitengine automatically scales the internal framebuffer to fill the physical pixels on high-DPI screens.
+
+To opt in to full native resolution, use `ebiten.DeviceScaleFactor()` in your layout:
+
+```go
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+    s := ebiten.DeviceScaleFactor()
+    return int(float64(outsideWidth) * s), int(float64(outsideHeight) * s)
+}
+```
+
+Then scale your UI/fonts by the same factor. The physical window size (in OS pixels) is controlled by `SetWindowSize`; the logical size returned by `Layout` is the canvas Ebitengine renders into.
+
+</Accordion>
+
+<Accordion title="How do I change the window icon?">
+
+Pass a slice of `image.Image` values to `ebiten.SetWindowIcon`. Providing multiple sizes lets the OS choose the most appropriate one.
+
+```go
+func loadIcon(path string) image.Image {
+    f, _ := os.Open(path)
+    defer f.Close()
+    img, _, _ := image.Decode(f)
+    return img
+}
+
+func main() {
+    ebiten.SetWindowIcon([]image.Image{
+        loadIcon("icon16.png"),
+        loadIcon("icon32.png"),
+        loadIcon("icon64.png"),
+    })
+    // ...
+}
+```
+
+<Note>
+`SetWindowIcon` has no effect on macOS (the icon is set via the application bundle) or on web/mobile builds.
+</Note>
+
+</Accordion>
+
+<Accordion title="How do I take a screenshot?">
+
+Read the pixel data from the screen image using `(*Image).At`, or more efficiently, call `ebiten.NewImageFromImage` after capturing your off-screen render target. The simplest approach is to keep a reference to the off-screen buffer you draw into and encode it when needed:
+
+```go
+func (g *Game) saveScreenshot() {
+    // g.offscreen is an *ebiten.Image you draw everything into,
+    // then blit to screen in Draw.
+    bounds := g.offscreen.Bounds()
+    rgba := image.NewRGBA(bounds)
+    for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+        for x := bounds.Min.X; x < bounds.Max.X; x++ {
+            rgba.Set(x, y, g.offscreen.At(x, y))
+        }
+    }
+    f, _ := os.Create("screenshot.png")
+    defer f.Close()
+    png.Encode(f, rgba)
+}
+```
+
+<Warning>
+Iterating over pixels with `At` is slow. For large images, this will cause a noticeable frame hitch. Trigger screenshots on a dedicated key press so it only runs once.
+</Warning>
+
+</Accordion>
+
+<Accordion title="What is the difference between Update and Draw?">
+
+`Update` and `Draw` serve entirely separate roles:
+
+| | `Update` | `Draw` |
+|---|---|---|
+| **Purpose** | Advance game logic | Render the current state |
+| **Call rate** | Fixed (TPS, default 60/s) | Variable (display refresh rate) |
+| **May be skipped?** | No — always called TPS times/s | Yes — can be skipped if the engine is falling behind |
+| **Should modify state?** | Yes | No — treat `Draw` as read-only |
+| **Should draw?** | No | Yes |
+
+Keeping these responsibilities separate means your game runs at consistent speed even when the frame rate fluctuates. Never modify game state inside `Draw`.
+
+</Accordion>
+
+<Accordion title="Can I run the game loop faster than 60 TPS?">
+
+Yes. Call `ebiten.SetTPS` with any positive integer, or use the special constant `ebiten.SyncWithFPS` to synchronise `Update` with the display refresh rate:
+
+```go
+// Fixed rate
+ebiten.SetTPS(120)
+
+// Match the display (useful for animations or input-heavy games)
+ebiten.SetTPS(ebiten.SyncWithFPS)
+```
+
+When using `SyncWithFPS`, `Update` and `Draw` are called once per display frame, so there is no interpolation needed. Be aware that this makes game speed dependent on the player's monitor — it requires careful delta-time handling in your physics and movement code.
+
+<Tip>
+For most games, a fixed 60 TPS with `Draw` running as fast as the monitor allows (the default) is the simplest and most portable approach.
+</Tip>
+
+</Accordion>
+
+</AccordionGroup>

@@ -1,133 +1,90 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "Ebitengine: Dead Simple 2D Game Engine for Go"
+description: "Ebitengine is an open source 2D game engine for Go. Build cross-platform games that run on Windows, macOS, Linux, iOS, Android, and WebAssembly."
 ---
 
-## Setting up
+Ebitengine (formerly Ebiten) is an open source, dead simple 2D game engine for the Go programming language. With a straightforward API built around a single `Game` interface, you can build games that run on desktop, mobile, and the web without changing your code.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Ebitengine and set up your Go development environment in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Hello, World!" icon="rocket" href="/hello-world">
+    Write your first Ebitengine program and open a window with a colored background.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Concepts" icon="book" href="/concepts/game-loop">
+    Understand the game loop, drawing, input handling, audio, and shaders.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Examples" icon="gamepad" href="/examples/overview">
+    Browse working game examples from simple sprites to full 2D games.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why Ebitengine?
 
-Everything you need to create world-class documentation.
+Ebitengine gives you a minimal, productive surface area for game development in Go. You implement one interface, call `ebiten.RunGame`, and Ebitengine handles the rest — windowing, rendering, input, and audio — across every supported platform.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={3}>
+  <Card title="Cross-platform" icon="globe">
+    Deploy to Windows, macOS, Linux, iOS, Android, and WebAssembly from a single codebase.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Hardware accelerated" icon="microchip">
+    Rendering uses OpenGL, Metal, or DirectX depending on the platform — automatically.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Pure Go" icon="code">
+    No CGo required on most platforms. Works with standard `go build` and Go modules.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Built-in audio" icon="volume-high">
+    Play audio streams and PCM samples with the `audio` sub-package.
   </Card>
-</Columns>
+  <Card title="Custom shaders" icon="wand-magic-sparkles">
+    Write GPU shaders in Kage, a Go-like shading language built into Ebitengine.
+  </Card>
+  <Card title="Rich input" icon="keyboard">
+    Handle keyboard, mouse, gamepad, and touch input with a unified API.
+  </Card>
+</CardGroup>
 
-## Make your content agent ready
+## Get started in 3 steps
 
-Make your docs work for humans and AI agents alike.
+<Steps>
+  <Step title="Install Go and Ebitengine">
+    Make sure you have Go 1.21 or later, then add Ebitengine to your module:
 
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
+    ```bash
+    go get github.com/hajimehoshi/ebiten/v2
+    ```
+  </Step>
+  <Step title="Implement the Game interface">
+    Create a struct that satisfies `ebiten.Game` with `Update`, `Draw`, and `Layout` methods:
 
-## Need inspiration?
+    ```go main.go
+    type Game struct{}
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    func (g *Game) Update() error { return nil }
+    func (g *Game) Draw(screen *ebiten.Image) {
+        screen.Fill(color.RGBA{0x1a, 0x1a, 0x2e, 0xff})
+    }
+    func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+        return 640, 480
+    }
+    ```
+  </Step>
+  <Step title="Run your game">
+    Pass your game to `ebiten.RunGame`:
+
+    ```go main.go
+    func main() {
+        ebiten.SetWindowSize(640, 480)
+        ebiten.SetWindowTitle("My Game")
+        if err := ebiten.RunGame(&Game{}); err != nil {
+            log.Fatal(err)
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Ebitengine is now developed at [ebitengine.org](https://ebitengine.org). This documentation covers the core API and patterns used in Ebitengine v2.
+</Note>

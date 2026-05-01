@@ -1,0 +1,199 @@
+---
+title: "Deploy Ebitengine games to Windows, macOS, and Linux"
+description: "Build and ship Ebitengine games for Windows, macOS, and Linux using go build, cross-compilation, and platform-specific packaging steps."
+---
+
+Ebitengine games compile to native binaries on all three major desktop platforms using the standard `go build` toolchain. Each platform has its own requirements for system libraries, packaging conventions, and distribution considerations, but the core build process is identical: set the appropriate `GOOS` environment variable and run `go build`.
+
+## Building for each platform
+
+<Tabs>
+  <Tab title="Windows">
+    Build a Windows executable from any host:
+
+    ```bash
+    GOOS=windows GOARCH=amd64 go build -o game.exe .
+    ```
+
+    On Windows itself, you can omit `GOOS`:
+
+    ```bash
+    go build -o game.exe .
+    ```
+
+    **Embedding an application icon**
+
+    Windows reads icons from a `.syso` resource file linked into the binary. Use [rsrc](https://github.com/akavel/rsrc) or [goversioninfo](https://github.com/josephspurrier/goversioninfo) to generate one from an `.ico` file:
+
+    ```bash
+    go install github.com/akavel/rsrc@latest
+    rsrc -ico icon.ico -o resource.syso
+    go build -o game.exe .
+    ```
+
+    The `.syso` file is picked up automatically by the Go linker when it is in the same package directory.
+
+    <Tip>
+      To suppress the console window on Windows, add `-ldflags "-H windowsgui"` to your build command.
+    </Tip>
+  </Tab>
+  <Tab title="macOS">
+    Build a macOS binary from any host with macOS:
+
+    ```bash
+    go build -o game .
+    ```
+
+    Cross-compiling to macOS from Linux or Windows is not officially supported by the Go toolchain without additional setup (such as [osxcross](https://github.com/tpoechtrager/osxcross)).
+
+    **Creating a .app bundle**
+
+    A `.app` bundle is a directory structure macOS expects for GUI applications:
+
+    ```bash
+    mkdir -p Game.app/Contents/MacOS
+    mkdir -p Game.app/Contents/Resources
+    cp game Game.app/Contents/MacOS/game
+    ```
+
+    Create `Game.app/Contents/Info.plist`:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+      "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>CFBundleExecutable</key>
+      <string>game</string>
+      <key>CFBundleIdentifier</key>
+      <string>com.example.game</string>
+      <key>CFBundleName</key>
+      <string>Game</string>
+      <key>CFBundleVersion</key>
+      <string>1.0.0</string>
+      <key>NSHighResolutionCapable</key>
+      <true/>
+    </dict>
+    </plist>
+    ```
+
+    **Code signing**
+
+    For distribution outside the Mac App Store, sign the bundle with your Developer ID:
+
+    ```bash
+    codesign --deep --force --verify --verbose \
+      --sign "Developer ID Application: Your Name (TEAMID)" \
+      Game.app
+    ```
+
+    <Warning>
+      Unsigned `.app` bundles will be blocked by Gatekeeper on macOS. Users can right-click and choose "Open" to bypass this for development builds, but notarization is required for public distribution.
+    </Warning>
+  </Tab>
+  <Tab title="Linux">
+    Build a Linux binary:
+
+    ```bash
+    go build -o game .
+    ```
+
+    Cross-compile from macOS or Windows:
+
+    ```bash
+    GOOS=linux GOARCH=amd64 go build -o game .
+    ```
+
+    **Required system libraries**
+
+    Ebitengine on Linux uses OpenGL and X11 (or Wayland via XWayland). Install these dependencies on Debian/Ubuntu:
+
+    ```bash
+    sudo apt-get install \
+      libgl1-mesa-dev \
+      libx11-dev \
+      libxcursor-dev \
+      libxrandr-dev \
+      libxinerama-dev \
+      libxi-dev \
+      libxxf86vm-dev
+    ```
+
+    On Fedora/RHEL:
+
+    ```bash
+    sudo dnf install \
+      mesa-libGL-devel \
+      libX11-devel \
+      libXcursor-devel \
+      libXrandr-devel \
+      libXinerama-devel \
+      libXi-devel \
+      libXxf86vm-devel
+    ```
+
+    <Note>
+      For headless or CI environments, use a virtual framebuffer: `Xvfb :99 -screen 0 1280x720x24 &` and set `DISPLAY=:99` before running the binary.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Window configuration
+
+Configure the game window before calling `ebiten.RunGame`. These calls are typically placed at the top of `main()` or inside an `init()` function.
+
+```go
+package main
+
+import (
+    "github.com/hajimehoshi/ebiten/v2"
+    "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+)
+
+func main() {
+    ebiten.SetWindowSize(1280, 720)
+    ebiten.SetWindowTitle("My Game")
+    ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+
+    // Load and set a window icon (Windows and Linux)
+    img, _, err := ebitenutil.NewImageFromFile("icon.png")
+    if err == nil {
+        ebiten.SetWindowIcon([]image.Image{img})
+    }
+
+    if err := ebiten.RunGame(&Game{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+| Function | Description |
+|---|---|
+| `ebiten.SetWindowSize(w, h int)` | Sets the initial window size in logical pixels. |
+| `ebiten.SetWindowTitle(title string)` | Sets the window title bar text. |
+| `ebiten.SetWindowResizingMode(mode)` | Controls whether the user can resize the window. Use `ebiten.WindowResizingModeEnabled` to allow resizing. |
+| `ebiten.SetWindowIcon(imgs []image.Image)` | Sets the window icon. Provide multiple sizes for best results. Not supported on macOS. |
+
+## Fullscreen
+
+Toggle fullscreen at any point during the game loop:
+
+```go
+ebiten.SetFullscreen(true)
+```
+
+To allow the player to toggle fullscreen with a key:
+
+```go
+func (g *Game) Update() error {
+    if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+        ebiten.SetFullscreen(!ebiten.IsFullscreen())
+    }
+    return nil
+}
+```
+
+<Tip>
+  Call `ebiten.SetWindowSize` before entering fullscreen to define the resolution used when the player returns to windowed mode.
+</Tip>
